@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>潮汐要塞 · 海上塔防</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --deep: #061821;
+    --panel: rgba(6, 22, 30, 0.82);
+    --panel-line: rgba(255, 214, 140, 0.18);
+    --gold: #ffcf7a;
+    --ember: #ff7b54;
+    --foam: #eafdfd;
+    --hp-good: #7bdc9c;
+    --hp-warn: #ffcf7a;
+    --hp-bad: #ff6b6b;
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body{
+    margin:0; padding:0; width:100%; height:100%;
+    background: #000;
+    overflow: hidden;
+    font-family: 'Noto Sans TC', sans-serif;
+    color: var(--foam);
+    touch-action: none;
+  }
+  #stage-wrap{
+    position: fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(ellipse at 50% 20%, #101c22 0%, #05090c 70%);
+  }
+  #stage{
+    position: relative;
+    width: 100vw; height: 100vh;
+    aspect-ratio: 9 / 16;
+    max-height: 100vh;
+    max-width: min(100vw, 56.25vh);
+    background: #000;
+    box-shadow: 0 0 60px rgba(0,0,0,0.6);
+    overflow: hidden;
+  }
+  #gl{ position:absolute; inset:0; display:block; width:100%; height:100%; }
+
+  .eyebrow{
+    font-family:'Teko', sans-serif; letter-spacing:.14em; font-weight:600;
+    font-size:12px; color: var(--gold); text-transform:uppercase; opacity:.85;
+  }
+
+  /* ---------- Top HUD ---------- */
+  #hud-top{
+    position:absolute; top:0; left:0; right:0;
+    padding: max(10px, env(safe-area-inset-top)) 10px 8px;
+    display:flex; flex-direction:column; gap:6px;
+    z-index: 20; pointer-events:none;
+    background: linear-gradient(180deg, rgba(3,10,14,0.75) 0%, rgba(3,10,14,0.0) 100%);
+  }
+  .hud-row{ display:flex; align-items:center; gap:8px; }
+  #hp-wrap{ flex:1; display:flex; flex-direction:column; gap:2px; }
+  #hp-label{ display:flex; justify-content:space-between; font-family:'Teko',sans-serif; font-size:15px; letter-spacing:.05em; color:var(--foam); opacity:.9; }
+  #hp-bar-bg{ height:12px; border-radius:7px; background: rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.18); overflow:hidden; }
+  #hp-bar-fill{ height:100%; width:100%; background: linear-gradient(90deg, #4fd483, #a8e88f); transition: width .25s ease, background .25s ease; }
+
+  .pill{
+    font-family:'Teko',sans-serif; font-weight:600; font-size:17px; letter-spacing:.03em;
+    background: var(--panel); border:1px solid var(--panel-line); border-radius:10px;
+    padding: 4px 10px; display:flex; align-items:center; gap:5px; white-space:nowrap;
+  }
+  .pill .n{ color:var(--gold); font-size:19px; }
+
+  #wave-banner{
+    position:absolute; top:38%; left:50%; transform:translate(-50%,-50%) scale(.8);
+    font-family:'Teko',sans-serif; font-weight:700; font-size:54px; letter-spacing:.08em;
+    color: var(--gold); text-shadow: 0 0 24px rgba(255,207,122,0.55), 0 2px 0 rgba(0,0,0,0.4);
+    opacity:0; pointer-events:none; z-index: 25; transition: opacity .5s ease, transform .5s ease;
+    text-align:center;
+  }
+  #wave-banner .sub{ display:block; font-size:16px; color:var(--foam); opacity:.8; letter-spacing:.2em; margin-top:2px; }
+  #wave-banner.show{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+
+  #countdown-chip{
+    position:absolute; top:64px; left:50%; transform:translateX(-50%);
+    font-family:'Teko',sans-serif; font-size:15px; color:var(--foam); opacity:0;
+    background: var(--panel); border:1px solid var(--panel-line); border-radius: 20px;
+    padding:4px 14px; transition: opacity .3s ease; z-index:20; pointer-events:none;
+  }
+  #countdown-chip.show{ opacity:1; }
+  #countdown-chip b{ color:var(--gold); }
+
+  /* ---------- Bottom action panel (常駐建塔/升級按鈕) ---------- */
+  #bottom-panel{
+    position:absolute; left:10px; right:10px; bottom: max(10px, env(safe-area-inset-bottom));
+    z-index:20; display:flex; flex-direction:column; align-items:center; gap:6px;
+  }
+  #credit-hint{
+    font-family:'Teko',sans-serif; font-size:13px; letter-spacing:.04em; color: var(--gold);
+    min-height: 14px; opacity:.9;
+  }
+  .action-row{ display:flex; gap:8px; width:100%; }
+  .action-btn{
+    flex:1; pointer-events:auto; font-family:'Teko',sans-serif; font-size:16px; line-height:1.35;
+    letter-spacing:.03em; font-weight:600; color: var(--foam); text-align:center;
+    background: var(--panel); border:1px solid var(--panel-line); border-radius: 14px;
+    padding: 8px 6px; transition: opacity .2s ease, filter .15s ease;
+  }
+  .action-btn span{ font-size:12px; opacity:.75; font-family:'Noto Sans TC',sans-serif; }
+  .action-btn:disabled{ opacity:.32; filter:grayscale(0.6); }
+  .action-btn:not(:disabled):active{ filter:brightness(1.15); }
+  .action-btn.actionable{ animation: breathe 1.7s ease-in-out infinite; border-color: rgba(255,207,122,0.6); }
+  .action-btn.small{ font-size:13.5px; padding:8px 4px; }
+  @keyframes breathe{
+    0%, 100%{ box-shadow: 0 0 0 rgba(255,207,122,0); background: var(--panel); }
+    50%{ box-shadow: 0 0 16px rgba(255,207,122,0.55); background: rgba(255,207,122,0.14); }
+  }
+  #hint-row{
+    display:none; pointer-events:auto; font-family:'Noto Sans TC',sans-serif; font-size:13px;
+    background: var(--panel); border:1px solid var(--panel-line); border-radius: 14px;
+    padding: 8px 14px; align-items:center; gap:10px; width:100%; justify-content:center;
+  }
+  #hint-row button{
+    font-family:'Teko',sans-serif; font-size:15px; letter-spacing:.04em;
+    background: rgba(255,123,84,0.18); border:1px solid rgba(255,123,84,0.5); color:var(--ember);
+    border-radius:8px; padding:4px 10px; font-weight:600;
+  }
+  #upgrade-target-row{
+    display:none; width:100%; background: var(--panel); border:1px solid var(--panel-line);
+    border-radius:14px; padding:10px; text-align:center;
+  }
+  #upgrade-target-row .ut-label{
+    font-family:'Teko',sans-serif; font-size:14px; letter-spacing:.03em; color:var(--gold); margin-bottom:8px;
+  }
+  #upgrade-target-row .action-row{ margin-bottom:6px; }
+  .back-link{ font-size:12px; opacity:.55; pointer-events:auto; }
+
+  /* ---------- Modal (start / game over) ---------- */
+  .overlay{
+    position:absolute; inset:0; z-index: 50;
+    display:flex; align-items:center; justify-content:center;
+    background: rgba(3,10,14,0.72); backdrop-filter: blur(2px);
+    opacity:0; pointer-events:none; transition: opacity .25s ease;
+  }
+  .overlay.show{ opacity:1; pointer-events:auto; }
+  .card{
+    width: min(88%, 340px);
+    background: linear-gradient(180deg, rgba(14,32,40,0.96), rgba(8,20,26,0.98));
+    border: 1px solid var(--panel-line); border-radius: 18px;
+    padding: 20px 18px; text-align:center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .card h2{
+    font-family:'Teko',sans-serif; font-size:30px; letter-spacing:.05em; margin: 0 0 4px;
+    color: var(--gold);
+  }
+  .card p.desc{ margin: 0 0 16px; font-size:13px; opacity:.75; line-height:1.5; }
+
+  #start-overlay .card{ width:min(90%,360px); }
+  #start-overlay h1{
+    font-family:'Teko',sans-serif; font-weight:700; font-size:40px; letter-spacing:.06em;
+    color: var(--gold); margin:0 0 2px; text-shadow: 0 0 24px rgba(255,207,122,0.4);
+  }
+  #start-overlay .tagline{ font-size:12px; letter-spacing:.16em; opacity:.6; margin-bottom:16px; text-transform:uppercase; }
+  .rules{ text-align:left; font-size:12.5px; line-height:1.9; opacity:.85; margin: 0 0 18px; padding-left: 2px;}
+  .rules li{ margin-left: 16px; }
+  .big-btn{
+    width:100%; padding: 13px; border-radius:12px; border:none;
+    font-family:'Teko',sans-serif; font-size:20px; letter-spacing:.06em; font-weight:600;
+    background: linear-gradient(135deg, var(--ember), #ffb15e); color: #251100;
+    box-shadow: 0 8px 20px rgba(255,123,84,0.35);
+  }
+  .big-btn:active{ filter: brightness(0.92); }
+
+  #gameover-overlay h2{ color: var(--ember); }
+  #gameover-stats{ display:flex; justify-content:center; gap:20px; margin: 6px 0 18px; }
+  .stat{ text-align:center; }
+  .stat .v{ font-family:'Teko',sans-serif; font-size:30px; color:var(--gold); line-height:1; }
+  .stat .k{ font-size:11px; opacity:.6; margin-top:2px; }
+
+  #toast{
+    position:absolute; left:50%; bottom:112px; transform:translateX(-50%) translateY(10px);
+    background: rgba(255,107,107,0.16); border:1px solid rgba(255,107,107,0.5); color:#ffb3b3;
+    font-size:12.5px; padding:7px 14px; border-radius: 10px; z-index:30;
+    opacity:0; transition: opacity .25s ease, transform .25s ease; pointer-events:none;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div id="stage-wrap">
+  <div id="stage">
+    <canvas id="gl"></canvas>
+
+    <div id="hud-top">
+      <div class="hud-row">
+        <div class="pill">🌊 <span class="n" id="wave-num">1</span></div>
+        <div id="hp-wrap">
+          <div id="hp-label"><span>要塞護盾</span><span id="hp-text">100/100</span></div>
+          <div id="hp-bar-bg"><div id="hp-bar-fill"></div></div>
+        </div>
+      </div>
+      <div class="hud-row">
+        <div class="pill">⚔️ <span class="n" id="kill-num">0</span></div>
+        <div class="pill">✦ <span class="n" id="point-num">0</span><span style="opacity:.55;font-size:13px">/5</span></div>
+        <div class="pill">🗼 <span class="n" id="tower-num">0</span></div>
+      </div>
+    </div>
+
+    <div id="wave-banner">第 <span id="wave-banner-num">1</span> 波<span class="sub">敵艦逼近</span></div>
+    <div id="countdown-chip">下一波倒數 <b id="countdown-num">8</b> 秒</div>
+
+    <div id="bottom-panel">
+      <div id="credit-hint"></div>
+      <div id="default-actions" class="action-row">
+        <button class="action-btn" id="btn-build">🏗️<br>建塔</button>
+        <button class="action-btn" id="btn-upgrade">⬆️<br>升級</button>
+      </div>
+      <div id="hint-row">
+        <span id="hint-text">點擊海面放置新塔</span>
+        <button id="cancel-build">取消</button>
+      </div>
+      <div id="upgrade-target-row">
+        <div class="ut-label">升級對象：<span id="up-target-name">砲塔</span></div>
+        <div class="action-row">
+          <button class="action-btn small" id="up-firerate">⚡ 射速<br><span id="lv-fr">Lv.0</span></button>
+          <button class="action-btn small" id="up-damage">💥 火力<br><span id="lv-dmg">Lv.0</span></button>
+          <button class="action-btn small" id="up-heal">🩹 補血<br><span id="heal-desc">恢復耐久</span></button>
+        </div>
+        <div class="back-link" id="upgrade-back">‹ 返回</div>
+      </div>
+    </div>
+    <div id="toast">位置不可用，換個地方吧</div>
+
+    <!-- Start -->
+    <div class="overlay show" id="start-overlay">
+      <div class="card">
+        <div class="eyebrow" style="text-align:center;margin-bottom:6px;">NAVAL SIEGE</div>
+        <h1>潮汐要塞</h1>
+        <div class="tagline">波數制海上塔防</div>
+        <ul class="rules">
+          <li>要塞本身就是一座砲塔，會自動朝範圍內敵艦開火</li>
+          <li>敵艦會從四面八方的海面朝中央要塞衝來</li>
+          <li>點擊海面自由放置砲塔，塔會自動攻擊範圍內敵艦，塔上方有血量條</li>
+          <li>開局即有 5 點起始資源、10 秒準備時間可先做抉擇</li>
+          <li>每擊殺 1 艘得 1 分，每滿 5 分可在下方按鈕選擇「升級」或「建造新塔」</li>
+          <li>升級需先點選一座塔（或要塞），再從「射速／火力／補血」三選一，只影響那座塔</li>
+          <li>敵艦靠太近會撞擊砲塔，扣塔的耐久；要塞護盾歸零則遊戲結束</li>
+        </ul>
+        <button class="big-btn" id="start-btn">啟航迎敵</button>
+      </div>
+    </div>
+
+    <!-- Game over -->
+    <div class="overlay" id="gameover-overlay">
+      <div class="card">
+        <div class="eyebrow">要塞淪陷</div>
+        <h2>戰役結束</h2>
+        <div id="gameover-stats">
+          <div class="stat"><div class="v" id="go-wave">1</div><div class="k">存活波數</div></div>
+          <div class="stat"><div class="v" id="go-kills">0</div><div class="k">擊殺數</div></div>
+          <div class="stat"><div class="v" id="go-towers">1</div><div class="k">建造砲塔</div></div>
+        </div>
+        <button class="big-btn" id="restart-btn">重新開始</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ================= CONFIG (可自行調整難度曲線) ================= */
+const CONFIG = {
+  FIELD_RADIUS: 26,
+  BASE_RADIUS: 3.2,
+  BASE_MAX_HP: 100,
+  MAX_TOWERS: 8,
+  TOWER: { range: 11, cooldown: 1.1, damage: 9, hp: 60 },
+  UPGRADE: { firerateMult: 0.85, firerateMin: 0.35, damageStep: 4, healAmount: 30 },
+  ENEMY: {
+    baseHp: 12, hpPerWave: 3,
+    baseSpeed: 2.3, speedPerWave: 0.06, speedCap: 4.4,
+    attackDamage: 8,      // 打要塞
+    meleeDps: 14,         // 撞砲塔
+    meleeRange: 2.6
+  },
+  WAVE: {
+    baseCount: 5, countPerWave: 2, countCap: 22,
+    spawnIntervalBase: 1.05, spawnIntervalPerWave: 0.035, spawnIntervalMin: 0.38,
+    restSeconds: 8
+  },
+  START_COUNTDOWN: 10,
+  START_POINTS: 5
+};
+
+/* ================= Wave function shared by shader + JS ================= */
+function waveComponent(x, z, dirx, dirz, freq, amp, speed, t){
+  const len = Math.hypot(dirx, dirz);
+  const nx = dirx/len, nz = dirz/len;
+  return amp * Math.sin((x*nx + z*nz) * freq + t * speed);
+}
+function oceanHeight(x, z, t){
+  let h = 0;
+  h += waveComponent(x, z, 1.0, 0.4, 0.15, 0.6, 1.0, t);
+  h += waveComponent(x, z, -0.3, 1.0, 0.25, 0.4, 1.3, t);
+  h += waveComponent(x, z, 0.7, -0.7, 0.4, 0.25, 0.8, t);
+  const blockStep = 0.12;
+  return Math.round(h / blockStep) * blockStep;
+}
+
+/* ================= Renderer / Scene / Camera ================= */
+const canvas = document.getElementById('gl');
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0a1b22, 0.006);
+
+const camera = new THREE.PerspectiveCamera(65, 1, 0.1, 300);
+camera.up.set(0, 0, -1); // 垂直俯視時需明確指定「上」方向，避免鏡頭翻轉
+camera.position.set(0, 74, 0);
+camera.lookAt(0, 0, 0);
+const CAMERA_ZOOM = { ratePerSecond: 0.5, maxExtra: 20 }; // 每秒持續拉遠(增加高度)，最多再拉開20單位後停止
+const camInitialDir = camera.position.clone().normalize();
+const camInitialDist = camera.position.length();
+
+function resize(){
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+
+/* ================= Lighting ================= */
+const sunDir = new THREE.Vector3(-6, 9, -4).normalize();
+const ambient = new THREE.AmbientLight(0x8899aa, 0.65);
+scene.add(ambient);
+const sunLight = new THREE.DirectionalLight(0xffe3b0, 1.1);
+sunLight.position.copy(sunDir).multiplyScalar(30);
+scene.add(sunLight);
+
+/* ================= Sky dome ================= */
+{
+  const skyGeo = new THREE.SphereGeometry(120, 24, 16);
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: {
+      top: { value: new THREE.Color(0x1b1436) },
+      mid: { value: new THREE.Color(0x5a3350) },
+      bot: { value: new THREE.Color(0xff8a5c) }
+    },
+    vertexShader: `varying vec3 vPos; void main(){ vPos = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `
+      varying vec3 vPos; uniform vec3 top, mid, bot;
+      void main(){
+        float h = normalize(vPos).y;
+        vec3 c = h > 0.05 ? mix(mid, top, clamp(h*1.4,0.0,1.0)) : mix(bot, mid, clamp(h*6.0+0.3,0.0,1.0));
+        gl_FragColor = vec4(c, 1.0);
+      }`
+  });
+  scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+  const sunGeo = new THREE.CircleGeometry(6, 32);
+  const sunMat = new THREE.MeshBasicMaterial({ color:0xffdf9e, transparent:true, opacity:0.9 });
+  const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+  sunMesh.position.set(sunDir.x*90, sunDir.y*90 - 6, sunDir.z*90 - 20);
+  sunMesh.lookAt(camera.position);
+  scene.add(sunMesh);
+}
+
+/* ================= Ocean ================= */
+const oceanUniforms = {
+  uTime: { value: 0 },
+  uDeep: { value: new THREE.Color(0x073040) },
+  uShallow: { value: new THREE.Color(0x1c8e9e) },
+  uFoam: { value: new THREE.Color(0xeafdfd) },
+  uSunDir: { value: sunDir },
+  uCamPos: { value: camera.position }
+};
+const oceanGeo = new THREE.PlaneGeometry(CONFIG.FIELD_RADIUS*7, CONFIG.FIELD_RADIUS*7, 170, 170);
+oceanGeo.rotateX(-Math.PI/2);
+const oceanMat = new THREE.ShaderMaterial({
+  uniforms: oceanUniforms,
+  extensions: { derivatives: true },
+  vertexShader: `
+    uniform float uTime;
+    varying float vHeight;
+    varying vec3 vWorldPos;
+    float wc(vec2 p, vec2 dir, float freq, float amp, float speed, float t){
+      return amp * sin(dot(normalize(dir), p) * freq + t * speed);
+    }
+    void main(){
+      vec3 pos = position;
+      float h = 0.0;
+      h += wc(pos.xz, vec2(1.0,0.4), 0.15, 0.6, 1.0, uTime);
+      h += wc(pos.xz, vec2(-0.3,1.0), 0.25, 0.4, 1.3, uTime);
+      h += wc(pos.xz, vec2(0.7,-0.7), 0.4, 0.25, 0.8, uTime);
+      // 量化成小階梯，做出麥塊般一格一格的水面
+      float blockStep = 0.12;
+      float hQ = floor(h / blockStep + 0.5) * blockStep;
+      pos.y += hQ;
+      vHeight = hQ;
+      vec4 wp = modelMatrix * vec4(pos, 1.0);
+      vWorldPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: `
+    precision highp float;
+    varying float vHeight;
+    varying vec3 vWorldPos;
+    uniform vec3 uDeep, uShallow, uFoam, uSunDir, uCamPos;
+    void main(){
+      vec3 dx = dFdx(vWorldPos);
+      vec3 dy = dFdy(vWorldPos);
+      vec3 n = normalize(cross(dy, dx));
+      if(n.y < 0.0) n = -n;
+
+      float h = clamp((vHeight + 0.6) / 1.2, 0.0, 1.0);
+      // 深淺顏色改用色階，而非平滑漸層，呈現方塊感
+      float hBand = floor(h * 4.0) / 4.0;
+      vec3 base = mix(uDeep, uShallow, hBand);
+
+      float diff = max(dot(n, normalize(uSunDir)), 0.0);
+      float diffBand = floor(diff * 3.0) / 3.0;
+      base += diffBand * 0.24;
+
+      vec3 viewDir = normalize(uCamPos - vWorldPos);
+      vec3 halfDir = normalize(normalize(uSunDir) + viewDir);
+      float spec = pow(max(dot(n, halfDir), 0.0), 40.0);
+      float specQ = spec > 0.45 ? 1.0 : 0.0;
+      base += vec3(1.0, 0.92, 0.75) * specQ * 0.85;
+
+      float foam = step(0.7, h);
+      base = mix(base, uFoam, foam * 0.5);
+
+      float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 4.0);
+      float fresnelQ = fresnel > 0.55 ? 1.0 : 0.0;
+      base += vec3(0.5, 0.7, 0.75) * fresnelQ * 0.18;
+
+      gl_FragColor = vec4(base, 1.0);
+    }
+  `
+});
+const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+scene.add(ocean);
+
+/* ================= Base (fortress) ================= */
+const baseGroup = new THREE.Group();
+{
+  const stoneMat = new THREE.MeshStandardMaterial({ color:0x6b6558, roughness:0.9 });
+  const woodMat = new THREE.MeshStandardMaterial({ color:0x8a5a35, roughness:0.85 });
+  const flagMat = new THREE.MeshStandardMaterial({ color:0xff5b4d, emissive:0x330000, roughness:0.6 });
+
+  const island = new THREE.Mesh(new THREE.CylinderGeometry(CONFIG.BASE_RADIUS, CONFIG.BASE_RADIUS*1.15, 1.4, 16), stoneMat);
+  island.position.y = 0.2;
+  baseGroup.add(island);
+
+  const keep = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 2.4, 10), woodMat);
+  keep.position.y = 1.9;
+  baseGroup.add(keep);
+
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(2.0, 1.6, 10), new THREE.MeshStandardMaterial({ color:0x35211a, roughness:0.8 }));
+  roof.position.y = 3.9;
+  baseGroup.add(roof);
+
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,2.2,6), new THREE.MeshStandardMaterial({color:0x333333}));
+  pole.position.y = 5.7;
+  baseGroup.add(pole);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.1,0.7), flagMat);
+  flag.position.set(0.6, 6.2, 0);
+  flag.material.side = THREE.DoubleSide;
+  baseGroup.add(flag);
+}
+scene.add(baseGroup);
+
+/* ================= Helper: object pools & shared geo/mat ================= */
+const towerGeo = {
+  base: new THREE.CylinderGeometry(1.0, 1.2, 1.0, 10),
+  mid: new THREE.CylinderGeometry(0.55, 0.75, 1.1, 10),
+  barrel: new THREE.CylinderGeometry(0.14, 0.16, 1.5, 8)
+};
+const towerMatBase = new THREE.MeshStandardMaterial({ color:0x3d4a52, roughness:0.6, metalness:0.35 });
+const towerMatMid = new THREE.MeshStandardMaterial({ color:0x2b343a, roughness:0.55, metalness:0.4 });
+const towerMatBarrel = new THREE.MeshStandardMaterial({ color:0x1c1f22, roughness:0.4, metalness:0.6 });
+const rangeRingGeo = new THREE.RingGeometry(0.98, 1.0, 48);
+const rangeRingMat = new THREE.MeshBasicMaterial({ color:0xffcf7a, transparent:true, opacity:0.18, side:THREE.DoubleSide });
+
+const enemyHullMat = new THREE.MeshStandardMaterial({ color:0x2a2028, roughness:0.7 });
+const enemySailMat = new THREE.MeshStandardMaterial({ color:0x8b1e1e, roughness:0.7, emissive:0x220000 });
+
+const hitProxyGeo = new THREE.CylinderGeometry(2.0, 2.0, 4.2, 8);
+const hitProxyMat = new THREE.MeshBasicMaterial({ transparent:true, opacity:0, depthWrite:false, depthTest:false });
+
+function makeTowerMesh(){
+  const g = new THREE.Group();
+  const bodyGroup = new THREE.Group();
+  const base = new THREE.Mesh(towerGeo.base, towerMatBase); base.position.y = 0.5; bodyGroup.add(base);
+  const mid = new THREE.Mesh(towerGeo.mid, towerMatMid); mid.position.y = 1.35; bodyGroup.add(mid);
+  const barrelPivot = new THREE.Group(); barrelPivot.position.y = 1.55; bodyGroup.add(barrelPivot);
+  const barrelMat = towerMatBarrel.clone();
+  const barrel = new THREE.Mesh(towerGeo.barrel, barrelMat);
+  barrel.rotation.z = Math.PI/2; barrel.position.x = 0.8;
+  barrelPivot.add(barrel);
+  g.add(bodyGroup);
+  g.userData.bodyGroup = bodyGroup;
+  g.userData.barrelPivot = barrelPivot;
+  g.userData.barrel = barrel;
+  g.userData.barrelMat = barrelMat;
+
+  const ring = new THREE.Mesh(rangeRingGeo, rangeRingMat);
+  ring.rotation.x = -Math.PI/2; ring.position.y = 0.05;
+  g.add(ring);
+  g.userData.ring = ring;
+
+  // 放大的隱形點擊判定體：手機點擊塔身時更容易命中，不影響視覺（不隨血量縮放，維持穩定點擊區）
+  const hitProxy = new THREE.Mesh(hitProxyGeo, hitProxyMat);
+  hitProxy.position.y = 2.0;
+  g.add(hitProxy);
+  g.userData.hitProxy = hitProxy;
+
+  // 血量條（永遠面向攝影機，因鏡頭固定不動所以只需建立時對齊一次；不隨本體縮放，維持可讀性）
+  const hpBarGroup = new THREE.Group();
+  hpBarGroup.position.set(0, 2.6, 0);
+  const hpBg = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.2), new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0.45, depthTest:false }));
+  hpBarGroup.add(hpBg);
+  const hpFill = new THREE.Mesh(new THREE.PlaneGeometry(1.36, 0.13), new THREE.MeshBasicMaterial({ color:0x7bdc9c, depthTest:false }));
+  hpFill.position.z = 0.01;
+  hpBarGroup.add(hpFill);
+  hpBarGroup.renderOrder = 10;
+  g.add(hpBarGroup);
+  g.userData.hpFill = hpFill;
+  g.userData.hpBarGroup = hpBarGroup;
+
+  return g;
+}
+
+// 射速等級對應的砲管顏色（越高階越熾熱，象徵射速快、槍管發燙）
+const FIRERATE_COLORS = [0x1c1f22, 0x6b7280, 0xffcf7a, 0xff9a4d, 0xff5b4d, 0xff3b30];
+function firerateColorFor(lv){
+  return FIRERATE_COLORS[Math.min(FIRERATE_COLORS.length-1, lv)];
+}
+
+/* 統一更新塔的視覺表現：
+   - 血量(hp/maxHp) → 整體本體大小（受傷變小、補血變大）
+   - 火力(dmgLv)    → 砲管變長
+   - 射速(frLv)     → 砲管顏色變熱（越級越橘紅）             */
+function updateTowerVisual(t){
+  const frac = Math.max(0, Math.min(1, t.hp / t.maxHp));
+  t.mesh.userData.bodyGroup.scale.setScalar(0.78 + 0.34*frac);
+
+  const barrel = t.mesh.userData.barrel;
+  const lenScale = 1 + t.dmgLv*0.22;
+  barrel.scale.y = lenScale;
+  barrel.position.x = 0.05 + 0.75*lenScale;
+
+  const mat = t.mesh.userData.barrelMat;
+  mat.color.setHex(firerateColorFor(t.frLv));
+  mat.emissive.setHex(firerateColorFor(t.frLv));
+  mat.emissiveIntensity = Math.min(0.7, t.frLv*0.16);
+
+  const fill = t.mesh.userData.hpFill;
+  fill.scale.x = Math.max(0.001, frac);
+  fill.position.x = 0.68 * (frac - 1);
+  fill.material.color.setHex(frac > 0.5 ? 0x7bdc9c : frac > 0.25 ? 0xffcf7a : 0xff6b6b);
+}
+
+// 開火瞬間的槍口小閃光（沿用爆炸粒子池，數量少、壽命短）
+function spawnMuzzleFlash(pos){
+  const count = 4, speed = 1.1, baseScale = 0.13;
+  let spawned = 0;
+  for(let i=0;i<fxParticles.length && spawned<count;i++){
+    const p = fxParticles[i];
+    if(p.active) continue;
+    p.active = true;
+    p.pos.copy(pos);
+    const a = Math.random()*Math.PI*2;
+    p.vel.set(Math.cos(a), 0.3+Math.random()*0.3, Math.sin(a)).multiplyScalar(speed);
+    p.life = 0; p.maxLife = 0.16 + Math.random()*0.07;
+    p.scale = baseScale*(0.7+Math.random()*0.5);
+    spawned++;
+  }
+}
+
+/* ---- 基地自身也是一座砲塔：安裝旋轉砲管與射程圈 ---- */
+const baseBarrelPivot = new THREE.Group();
+baseBarrelPivot.position.y = 4.4;
+baseGroup.add(baseBarrelPivot);
+const baseBarrelMesh = new THREE.Mesh(towerGeo.barrel, towerMatBarrel);
+baseBarrelMesh.scale.set(1.4, 1.4, 1.4);
+baseBarrelMesh.rotation.z = Math.PI/2;
+baseBarrelMesh.position.x = 1.1;
+baseBarrelPivot.add(baseBarrelMesh);
+const baseRing = new THREE.Mesh(rangeRingGeo, rangeRingMat);
+baseRing.rotation.x = -Math.PI/2;
+baseRing.position.y = 0.08;
+baseRing.scale.setScalar(CONFIG.TOWER.range);
+baseGroup.add(baseRing);
+const baseHitProxy = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 8, 8), hitProxyMat);
+baseHitProxy.position.y = 3.2;
+baseGroup.add(baseHitProxy);
+
+function makeEnemyMesh(){
+  const g = new THREE.Group();
+  const hull = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.9, 4), enemyHullMat);
+  hull.rotation.x = Math.PI/2; hull.rotation.y = Math.PI/4;
+  hull.position.y = 0.25;
+  g.add(hull);
+  const sail = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.1), enemySailMat);
+  sail.position.y = 0.9; sail.material.side = THREE.DoubleSide;
+  g.add(sail);
+  return g;
+}
+
+/* ================= Explosion particle system (manual, lightweight) ================= */
+const MAX_FX = 220;
+const fxGeo = new THREE.SphereGeometry(1, 5, 4);
+const fxMat = new THREE.MeshBasicMaterial({ color:0xffcf7a, transparent:true, opacity:1 });
+const fxMesh = new THREE.InstancedMesh(fxGeo, fxMat, MAX_FX);
+fxMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(fxMesh);
+const fxParticles = [];
+for(let i=0;i<MAX_FX;i++) fxParticles.push({ active:false, pos:new THREE.Vector3(), vel:new THREE.Vector3(), life:0, maxLife:1, scale:1 });
+const dummy = new THREE.Object3D();
+
+function spawnExplosion(pos, big){
+  const count = big ? 22 : 10;
+  const speed = big ? 6 : 3.5;
+  const baseScale = big ? 0.5 : 0.28;
+  let spawned = 0;
+  for(let i=0;i<fxParticles.length && spawned<count;i++){
+    const p = fxParticles[i];
+    if(p.active) continue;
+    p.active = true;
+    p.pos.copy(pos);
+    const a = Math.random()*Math.PI*2;
+    const el = Math.random()*Math.PI*0.5;
+    p.vel.set(Math.cos(a)*Math.cos(el), Math.sin(el)*0.8 + 0.4, Math.sin(a)*Math.cos(el)).multiplyScalar(speed*(0.5+Math.random()*0.7));
+    p.life = 0; p.maxLife = 0.45 + Math.random()*0.35;
+    p.scale = baseScale*(0.6+Math.random()*0.8);
+    spawned++;
+  }
+}
+function updateFx(dt){
+  for(let i=0;i<fxParticles.length;i++){
+    const p = fxParticles[i];
+    if(!p.active) continue;
+    p.life += dt;
+    if(p.life >= p.maxLife){ p.active = false; dummy.position.set(0,-999,0); dummy.scale.set(0.0001,0.0001,0.0001); dummy.updateMatrix(); fxMesh.setMatrixAt(i, dummy.matrix); continue; }
+    p.vel.y -= 9*dt;
+    p.pos.addScaledVector(p.vel, dt);
+    const t = p.life/p.maxLife;
+    const s = p.scale * (1-t*0.7);
+    dummy.position.copy(p.pos);
+    dummy.scale.set(s,s,s);
+    dummy.updateMatrix();
+    fxMesh.setMatrixAt(i, dummy.matrix);
+  }
+  fxMesh.instanceMatrix.needsUpdate = true;
+}
+
+/* ================= Bullets ================= */
+const bulletGeo = new THREE.SphereGeometry(0.16, 6, 6);
+const bulletMat = new THREE.MeshBasicMaterial({ color:0xfff2c9 });
+const bullets = [];
+function spawnBullet(from, to, damage, onHit){
+  const mesh = new THREE.Mesh(bulletGeo, bulletMat);
+  mesh.position.copy(from);
+  scene.add(mesh);
+  const dist = from.distanceTo(to);
+  const travel = Math.max(0.08, dist/26);
+  bullets.push({ mesh, from: from.clone(), to: to.clone(), t:0, travel, damage, onHit });
+}
+function updateBullets(dt){
+  for(let i=bullets.length-1;i>=0;i--){
+    const b = bullets[i];
+    b.t += dt/b.travel;
+    if(b.t >= 1){
+      b.mesh.position.copy(b.to);
+      scene.remove(b.mesh);
+      b.onHit();
+      bullets.splice(i,1);
+      continue;
+    }
+    b.mesh.position.lerpVectors(b.from, b.to, b.t);
+    b.mesh.position.y += Math.sin(b.t*Math.PI)*1.2;
+  }
+}
+
+/* ================= Game state ================= */
+const state = {
+  running:false,
+  time:0,
+  baseHp: CONFIG.BASE_MAX_HP,
+  points:0,
+  pointsSinceMilestone:0,
+  kills:0,
+  wave:0,
+  waveEnemiesTotal:0,
+  waveEnemiesSpawned:0,
+  spawnTimer:0,
+  spawnInterval:1,
+  resting:true,
+  restTimer:2,
+  placementMode:false,
+  upgradeSelectMode:false,
+  currentUpgradeTarget:null,
+  modalQueue:0,
+  gameOver:false,
+  totalTowersBuilt:0,
+  playTime:0
+};
+const towers = [];
+const enemies = [];
+const baseTurret = {
+  isBase: true,
+  mesh: { userData: { barrelPivot: baseBarrelPivot } },
+  x: 0, z: 0,
+  cooldown: 0,
+  dmgLv: 0, frLv: 0
+};
+
+function towerDamage(t){
+  return CONFIG.TOWER.damage + t.dmgLv * CONFIG.UPGRADE.damageStep;
+}
+function towerCooldown(t){
+  return Math.max(CONFIG.UPGRADE.firerateMin, CONFIG.TOWER.cooldown * Math.pow(CONFIG.UPGRADE.firerateMult, t.frLv));
+}
+
+function addTower(x, z){
+  const mesh = makeTowerMesh();
+  mesh.position.set(x, oceanHeight(x,z,state.time)+0.05, z);
+  mesh.userData.ring.scale.setScalar(CONFIG.TOWER.range);
+  mesh.userData.hpBarGroup.quaternion.copy(camera.quaternion);
+  scene.add(mesh);
+  const t = {
+    mesh, x, z,
+    hp: CONFIG.TOWER.hp, maxHp: CONFIG.TOWER.hp,
+    cooldown: 0,
+    dmgLv: 0, frLv: 0
+  };
+  towers.push(t);
+  updateTowerVisual(t);
+  state.totalTowersBuilt++;
+  updateTowerCountUi();
+}
+
+/* ================= Enemy spawn ================= */
+function enemyStatsForWave(w){
+  return {
+    hp: CONFIG.ENEMY.baseHp + w*CONFIG.ENEMY.hpPerWave,
+    speed: Math.min(CONFIG.ENEMY.speedCap, CONFIG.ENEMY.baseSpeed + w*CONFIG.ENEMY.speedPerWave)
+  };
+}
+function spawnEnemy(){
+  const angle = Math.random()*Math.PI*2;
+  const r = CONFIG.FIELD_RADIUS - 1;
+  const x = Math.cos(angle)*r, z = Math.sin(angle)*r;
+  const st = enemyStatsForWave(state.wave);
+  const mesh = makeEnemyMesh();
+  mesh.position.set(x, oceanHeight(x,z,state.time), z);
+  scene.add(mesh);
+  enemies.push({ mesh, x, z, hp:st.hp, maxHp:st.hp, speed:st.speed, dead:false });
+}
+
+function startWave(n){
+  state.wave = n;
+  state.waveEnemiesTotal = Math.min(CONFIG.WAVE.countCap, CONFIG.WAVE.baseCount + (n-1)*CONFIG.WAVE.countPerWave);
+  state.waveEnemiesSpawned = 0;
+  state.spawnInterval = Math.max(CONFIG.WAVE.spawnIntervalMin, CONFIG.WAVE.spawnIntervalBase - (n-1)*CONFIG.WAVE.spawnIntervalPerWave);
+  state.spawnTimer = 0;
+  state.resting = false;
+  document.getElementById('wave-num').textContent = n;
+  document.getElementById('wave-banner-num').textContent = n;
+  const banner = document.getElementById('wave-banner');
+  banner.classList.add('show');
+  setTimeout(()=>banner.classList.remove('show'), 1400);
+  document.getElementById('countdown-chip').classList.remove('show');
+}
+
+/* ================= UI helpers ================= */
+function updateHpUi(){
+  const pct = Math.max(0, state.baseHp/CONFIG.BASE_MAX_HP*100);
+  document.getElementById('hp-bar-fill').style.width = pct+'%';
+  document.getElementById('hp-text').textContent = Math.max(0,Math.round(state.baseHp))+'/'+CONFIG.BASE_MAX_HP;
+  const fill = document.getElementById('hp-bar-fill');
+  fill.style.background = pct>50 ? 'linear-gradient(90deg,#4fd483,#a8e88f)' : (pct>22 ? 'linear-gradient(90deg,#ffcf7a,#ffe19c)' : 'linear-gradient(90deg,#ff6b6b,#ff9b9b)');
+}
+function updatePointUi(){
+  document.getElementById('kill-num').textContent = state.kills;
+  document.getElementById('point-num').textContent = state.pointsSinceMilestone;
+}
+function updateTowerCountUi(){
+  document.getElementById('tower-num').textContent = towers.length;
+}
+function showToast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>el.classList.remove('show'), 1500);
+}
+
+/* ================= Bottom action panel flow ================= */
+const defaultActions = document.getElementById('default-actions');
+const hintRow = document.getElementById('hint-row');
+const upgradeTargetRow = document.getElementById('upgrade-target-row');
+const creditHint = document.getElementById('credit-hint');
+const hintText = document.getElementById('hint-text');
+const btnBuild = document.getElementById('btn-build');
+const btnUpgrade = document.getElementById('btn-upgrade');
+
+function showBottomPanel(which){
+  defaultActions.style.display = which==='default' ? 'flex' : 'none';
+  hintRow.style.display = which==='hint' ? 'flex' : 'none';
+  upgradeTargetRow.style.display = which==='target' ? 'block' : 'none';
+}
+function refreshActionButtons(){
+  const has = state.modalQueue > 0;
+  const buildDisabled = !has || towers.length >= CONFIG.MAX_TOWERS;
+  btnBuild.disabled = buildDisabled;
+  btnBuild.classList.toggle('actionable', !buildDisabled);
+  btnUpgrade.disabled = !has;
+  btnUpgrade.classList.toggle('actionable', has);
+  creditHint.textContent = has ? ('可用抉擇 ×'+state.modalQueue) : '';
+}
+btnBuild.addEventListener('click', ()=>{
+  if(btnBuild.disabled) return;
+  state.placementMode = true;
+  hintText.textContent = '點擊海面放置新塔';
+  showBottomPanel('hint');
+});
+btnUpgrade.addEventListener('click', ()=>{
+  if(btnUpgrade.disabled) return;
+  state.upgradeSelectMode = true;
+  hintText.textContent = '點擊要升級的砲塔（或要塞）';
+  showBottomPanel('hint');
+});
+document.getElementById('cancel-build').addEventListener('click', ()=>{
+  state.placementMode = false;
+  state.upgradeSelectMode = false;
+  showBottomPanel('default');
+});
+document.getElementById('upgrade-back').addEventListener('click', ()=>{
+  state.currentUpgradeTarget = null;
+  showBottomPanel('default');
+});
+function openUpgradeTargetRowFor(target){
+  state.currentUpgradeTarget = target;
+  const hp = target.isBase ? state.baseHp : target.hp;
+  const maxHp = target.isBase ? CONFIG.BASE_MAX_HP : target.maxHp;
+  document.getElementById('up-target-name').textContent = target.isBase ? '要塞主砲' : '砲塔';
+  document.getElementById('lv-fr').textContent = 'Lv.'+target.frLv;
+  document.getElementById('lv-dmg').textContent = 'Lv.'+target.dmgLv;
+  document.getElementById('up-heal').disabled = hp >= maxHp;
+  document.getElementById('heal-desc').textContent = '恢復'+CONFIG.UPGRADE.healAmount+'（'+Math.round(hp)+'/'+maxHp+'）';
+  showBottomPanel('target');
+}
+function finishUpgrade(){
+  state.currentUpgradeTarget = null;
+  state.modalQueue--;
+  showBottomPanel('default');
+  refreshActionButtons();
+}
+document.getElementById('up-firerate').addEventListener('click', ()=>{
+  const t = state.currentUpgradeTarget;
+  if(t){ t.frLv++; if(!t.isBase) updateTowerVisual(t); }
+  finishUpgrade();
+});
+document.getElementById('up-damage').addEventListener('click', ()=>{
+  const t = state.currentUpgradeTarget;
+  if(t){ t.dmgLv++; if(!t.isBase) updateTowerVisual(t); }
+  finishUpgrade();
+});
+document.getElementById('up-heal').addEventListener('click', ()=>{
+  const t = state.currentUpgradeTarget;
+  if(t){
+    if(t.isBase){ state.baseHp = Math.min(CONFIG.BASE_MAX_HP, state.baseHp + CONFIG.UPGRADE.healAmount); updateHpUi(); }
+    else { t.hp = Math.min(t.maxHp, t.hp + CONFIG.UPGRADE.healAmount); updateTowerVisual(t); }
+  }
+  finishUpgrade();
+});
+
+/* ================= Pointer / placement / upgrade target picking ================= */
+const raycaster = new THREE.Raycaster();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+function screenToWorld(clientX, clientY){
+  const rect = stage.getBoundingClientRect();
+  const nx = ((clientX-rect.left)/rect.width)*2-1;
+  const ny = -((clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera({x:nx,y:ny}, camera);
+  const pt = new THREE.Vector3();
+  raycaster.ray.intersectPlane(groundPlane, pt);
+  return pt;
+}
+function pickTowerAt(clientX, clientY){
+  const rect = stage.getBoundingClientRect();
+  const nx = ((clientX-rect.left)/rect.width)*2-1;
+  const ny = -((clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera({x:nx,y:ny}, camera);
+  const candidates = towers.map(t=>({obj:t.mesh, ref:t}));
+  candidates.push({obj:baseGroup, ref:baseTurret});
+  const objs = candidates.map(c=>c.obj);
+  const hits = raycaster.intersectObjects(objs, true);
+  if(hits.length===0) return null;
+  let hitRoot = hits[0].object;
+  while(hitRoot && !objs.includes(hitRoot)) hitRoot = hitRoot.parent;
+  const found = candidates.find(c=>c.obj===hitRoot);
+  return found ? found.ref : null;
+}
+canvas.addEventListener('click', (e)=>{
+  if(!state.running || state.gameOver) return;
+  if(state.placementMode){
+    const pt = screenToWorld(e.clientX, e.clientY);
+    if(!pt) return;
+    const distCenter = Math.hypot(pt.x, pt.z);
+    if(distCenter > CONFIG.FIELD_RADIUS-1.5){ showToast('太靠近邊界，換個地方吧'); return; }
+    if(distCenter < CONFIG.BASE_RADIUS+2.2){ showToast('離要塞太近，換個地方吧'); return; }
+    for(const t of towers){
+      if(Math.hypot(pt.x-t.x, pt.z-t.z) < 3.2){ showToast('離其他砲塔太近，換個地方吧'); return; }
+    }
+    addTower(pt.x, pt.z);
+    state.placementMode = false;
+    state.modalQueue--;
+    showBottomPanel('default');
+    refreshActionButtons();
+    return;
+  }
+  if(state.upgradeSelectMode){
+    const target = pickTowerAt(e.clientX, e.clientY);
+    if(!target){ showToast('請點擊砲塔或要塞'); return; }
+    state.upgradeSelectMode = false;
+    openUpgradeTargetRowFor(target);
+    return;
+  }
+});
+
+/* ================= Milestone check ================= */
+function addPoints(n){
+  state.points += n;
+  state.pointsSinceMilestone += n;
+  while(state.pointsSinceMilestone >= 5){
+    state.pointsSinceMilestone -= 5;
+    state.modalQueue++;
+  }
+  updatePointUi();
+  refreshActionButtons();
+}
+
+/* ================= Main update ================= */
+const countdownChip = document.getElementById('countdown-chip');
+const countdownNum = document.getElementById('countdown-num');
+
+function killEnemy(enemy){
+  if(enemy.dead) return;
+  enemy.dead = true;
+  spawnExplosion(enemy.mesh.position, false);
+  scene.remove(enemy.mesh);
+  state.kills++;
+  addPoints(1);
+}
+
+function update(dt){
+  state.time += dt;
+  oceanUniforms.uTime.value = state.time;
+  for(const t of towers) t.mesh.position.y = oceanHeight(t.x, t.z, state.time)+0.05;
+  for(const e of enemies) e.mesh.position.y = oceanHeight(e.x, e.z, state.time);
+  baseGroup.position.y = oceanHeight(0,0,state.time)*0.15;
+
+  // 鏡頭隨時間緩慢拉遠，逐漸展開可視海域範圍（有上限，不會無限拉遠）
+  state.playTime += dt;
+  const zoomExtra = Math.min(CAMERA_ZOOM.maxExtra, state.playTime * CAMERA_ZOOM.ratePerSecond);
+  const camDist = camInitialDist + zoomExtra;
+  camera.position.copy(camInitialDir).multiplyScalar(camDist);
+  camera.lookAt(0, 0, 0);
+
+  // resting / wave spawn logic
+  if(state.resting){
+    state.restTimer -= dt;
+    countdownChip.classList.add('show');
+    countdownNum.textContent = Math.max(0, Math.ceil(state.restTimer));
+    if(state.restTimer <= 0){
+      state.resting = false;
+      startWave(state.wave+1);
+    }
+  } else {
+    if(state.waveEnemiesSpawned < state.waveEnemiesTotal){
+      state.spawnTimer -= dt;
+      if(state.spawnTimer <= 0){
+        spawnEnemy();
+        state.waveEnemiesSpawned++;
+        state.spawnTimer = state.spawnInterval;
+      }
+    } else if(enemies.length === 0){
+      state.resting = true;
+      state.restTimer = CONFIG.WAVE.restSeconds;
+    }
+  }
+
+  // enemies move
+  for(let i=enemies.length-1;i>=0;i--){
+    const e = enemies[i];
+    if(e.dead){ enemies.splice(i,1); continue; }
+    const dx = -e.x, dz = -e.z;
+    const dist = Math.hypot(dx,dz);
+    if(dist < CONFIG.BASE_RADIUS){
+      state.baseHp -= CONFIG.ENEMY.attackDamage;
+      spawnExplosion(e.mesh.position, false);
+      scene.remove(e.mesh);
+      enemies.splice(i,1);
+      updateHpUi();
+      if(state.baseHp <= 0) triggerGameOver();
+      continue;
+    }
+    const nx = dx/dist, nz = dz/dist;
+    e.x += nx*e.speed*dt;
+    e.z += nz*e.speed*dt;
+    e.mesh.position.set(e.x, oceanHeight(e.x,e.z,state.time), e.z);
+    e.mesh.rotation.y = Math.atan2(nx, nz);
+
+    // melee vs towers
+    for(let ti=towers.length-1;ti>=0;ti--){
+      const t = towers[ti];
+      if(Math.hypot(e.x-t.x, e.z-t.z) < CONFIG.ENEMY.meleeRange){
+        t.hp -= CONFIG.ENEMY.meleeDps*dt;
+        if(t.hp <= 0){
+          spawnExplosion(t.mesh.position, true);
+          scene.remove(t.mesh);
+          towers.splice(ti,1);
+          updateTowerCountUi();
+        } else {
+          updateTowerVisual(t);
+        }
+      }
+    }
+  }
+
+  // towers fire (含基地自身砲塔)
+  const firingUnits = [baseTurret, ...towers];
+  const tmpWorldPos = new THREE.Vector3();
+  for(const t of firingUnits){
+    t.cooldown -= dt;
+    let nearest = null, nearestDist = CONFIG.TOWER.range;
+    for(const e of enemies){
+      const d = Math.hypot(e.x-t.x, e.z-t.z);
+      if(d <= nearestDist){ nearest = e; nearestDist = d; }
+    }
+    if(nearest){
+      const pivot = t.mesh.userData.barrelPivot;
+      pivot.rotation.y = Math.atan2(nearest.x-t.x, nearest.z-t.z) + Math.PI/2;
+    }
+    if(nearest && t.cooldown <= 0){
+      t.cooldown = towerCooldown(t);
+      const dmg = towerDamage(t);
+      let from;
+      if(t.isBase){
+        t.mesh.userData.barrelPivot.getWorldPosition(tmpWorldPos);
+        from = tmpWorldPos.clone();
+      } else {
+        from = t.mesh.position.clone(); from.y += 1.6;
+      }
+      const to = nearest.mesh.position.clone(); to.y += 0.3;
+      const targetRef = nearest;
+      spawnMuzzleFlash(from);
+      spawnBullet(from, to, dmg, ()=>{
+        if(targetRef.dead) return;
+        spawnExplosion(to, false);
+        targetRef.hp -= dmg;
+        if(targetRef.hp <= 0) killEnemy(targetRef);
+      });
+    }
+  }
+
+  updateBullets(dt);
+  updateFx(dt);
+}
+
+/* ================= Game over / restart ================= */
+function triggerGameOver(){
+  state.gameOver = true;
+  state.running = false;
+  document.getElementById('go-wave').textContent = state.wave;
+  document.getElementById('go-kills').textContent = state.kills;
+  document.getElementById('go-towers').textContent = state.totalTowersBuilt;
+  document.getElementById('gameover-overlay').classList.add('show');
+}
+function resetGame(){
+  for(const t of towers) scene.remove(t.mesh);
+  for(const e of enemies) scene.remove(e.mesh);
+  towers.length = 0; enemies.length = 0;
+  for(const b of bullets) scene.remove(b.mesh);
+  bullets.length = 0;
+  baseTurret.cooldown = 0;
+  baseTurret.dmgLv = 0;
+  baseTurret.frLv = 0;
+  Object.assign(state, {
+    running:true, time:0, baseHp: CONFIG.BASE_MAX_HP, points:0, pointsSinceMilestone:0, kills:0,
+    wave:0, waveEnemiesTotal:0, waveEnemiesSpawned:0, spawnTimer:0, spawnInterval:1,
+    resting:true, restTimer:CONFIG.START_COUNTDOWN, placementMode:false, upgradeSelectMode:false,
+    currentUpgradeTarget:null, modalQueue:0, gameOver:false, totalTowersBuilt:0, playTime:0
+  });
+  camera.position.copy(camInitialDir).multiplyScalar(camInitialDist);
+  camera.lookAt(0, 0, 0);
+  showBottomPanel('default');
+  updateHpUi(); updatePointUi(); updateTowerCountUi(); refreshActionButtons();
+  document.getElementById('gameover-overlay').classList.remove('show');
+  addPoints(CONFIG.START_POINTS);
+  showToast('起始資源 '+CONFIG.START_POINTS+' 點，快選擇建塔或升級！');
+}
+
+document.getElementById('start-btn').addEventListener('click', ()=>{
+  document.getElementById('start-overlay').classList.remove('show');
+  resetGame();
+});
+document.getElementById('restart-btn').addEventListener('click', ()=>{
+  resetGame();
+});
+
+/* ================= Render loop ================= */
+let lastT = performance.now();
+function loop(now){
+  const dt = Math.min(0.05, (now-lastT)/1000);
+  lastT = now;
+  if(state.running && !state.gameOver) update(dt);
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+resize();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
