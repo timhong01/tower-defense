@@ -234,6 +234,9 @@
           <button class="action-btn small" id="up-range">🎯 射程<br><span id="lv-range">Lv.0</span></button>
           <button class="action-btn small" id="up-heal">🩹 補血<br><span id="heal-desc">恢復耐久</span></button>
         </div>
+        <div class="action-row" id="base-only-row" style="display:none; margin-top:6px;">
+          <button class="action-btn small" id="up-repair">🔧 維修電流（要塞專屬）<br><span id="lv-repair">Lv.0</span></button>
+        </div>
         <div class="back-link" id="upgrade-back">‹ 返回</div>
       </div>
     </div>
@@ -297,6 +300,8 @@ const CONFIG = {
   MAX_TOWERS: 8,
   TOWER: { range: 11, cooldown: 1.1, damage: 9, hp: 60 },
   UPGRADE: { firerateMult: 0.85, firerateMin: 0.35, damageStep: 4, healAmount: 30, rangeStep: 2 },
+  // 要塞專屬「維修電流」：定期自動電擊修復受損最嚴重的一座砲塔
+  REPAIR: { baseCooldown: 6, cooldownMult: 0.82, cooldownMin: 2.0, healBase: 18, healStep: 10 },
   ENEMY: {
     baseHp: 12, hpPerWave: 3,
     baseSpeed: 2.3, speedPerWave: 0.06, speedCap: 4.4,
@@ -621,7 +626,8 @@ function spawnMuzzleFlash(pos){
 const baseBarrelPivot = new THREE.Group();
 baseBarrelPivot.position.y = 4.4;
 baseGroup.add(baseBarrelPivot);
-const baseBarrelMesh = new THREE.Mesh(towerGeo.barrel, towerMatBarrel);
+const baseBarrelMat = towerMatBarrel.clone();
+const baseBarrelMesh = new THREE.Mesh(towerGeo.barrel, baseBarrelMat);
 baseBarrelMesh.scale.set(1.4, 1.4, 1.4);
 baseBarrelMesh.rotation.z = Math.PI/2;
 baseBarrelMesh.position.x = 1.1;
@@ -634,6 +640,16 @@ baseGroup.add(baseRing);
 const baseHitProxy = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 8, 8), hitProxyMat);
 baseHitProxy.position.y = 3.2;
 baseGroup.add(baseHitProxy);
+
+/* 要塞升級時同步更新其主砲外觀：火力→砲管變長、射速→砲管變熱 */
+function updateBaseVisual(){
+  const lenScale = 1.4 * (1 + baseTurret.dmgLv*0.16);
+  baseBarrelMesh.scale.set(1.4, lenScale, 1.4);
+  baseBarrelMesh.position.x = 0.5 + 0.5*lenScale;
+  baseBarrelMat.color.setHex(firerateColorFor(baseTurret.frLv));
+  baseBarrelMat.emissive.setHex(firerateColorFor(baseTurret.frLv));
+  baseBarrelMat.emissiveIntensity = Math.min(0.7, baseTurret.frLv*0.16);
+}
 
 function makeEnemyMesh(wave){
   const tier = enemyTierForWave(wave);
@@ -761,6 +777,42 @@ function updateBullets(dt){
   }
 }
 
+/* ================= Repair lightning (要塞維修電流的電擊視覺) ================= */
+const lightnings = [];
+const lightningMatProto = new THREE.LineBasicMaterial({ color:0x9fe8ff, transparent:true, opacity:1 });
+function spawnLightning(from, to){
+  const segs = 9;
+  const pts = [];
+  const dir = new THREE.Vector3().subVectors(to, from);
+  for(let i=0;i<=segs;i++){
+    const p = from.clone().addScaledVector(dir, i/segs);
+    if(i>0 && i<segs){
+      p.x += (Math.random()-0.5)*1.5;
+      p.y += Math.random()*1.3 + 0.5;
+      p.z += (Math.random()-0.5)*1.5;
+    }
+    pts.push(p);
+  }
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const line = new THREE.Line(geo, lightningMatProto.clone());
+  scene.add(line);
+  lightnings.push({ line, life:0, maxLife:0.24 });
+  spawnMuzzleFlash(to); // 命中處補血火花
+}
+function updateLightnings(dt){
+  for(let i=lightnings.length-1;i>=0;i--){
+    const L = lightnings[i];
+    L.life += dt;
+    L.line.material.opacity = Math.max(0, 1 - L.life/L.maxLife);
+    if(L.life >= L.maxLife){
+      scene.remove(L.line);
+      L.line.geometry.dispose();
+      L.line.material.dispose();
+      lightnings.splice(i,1);
+    }
+  }
+}
+
 /* ================= Game state ================= */
 const state = {
   running:false,
@@ -792,8 +844,12 @@ const baseTurret = {
   mesh: { userData: { barrelPivot: baseBarrelPivot } },
   x: 0, z: 0,
   cooldown: 0,
-  dmgLv: 0, frLv: 0, rangeLv: 0
+  dmgLv: 0, frLv: 0, rangeLv: 0,
+  repairLv: 0, repairTimer: 0
 };
+function repairCooldown(t){
+  return Math.max(CONFIG.REPAIR.cooldownMin, CONFIG.REPAIR.baseCooldown * Math.pow(CONFIG.REPAIR.cooldownMult, t.repairLv-1));
+}
 
 function towerDamage(t){
   return CONFIG.TOWER.damage + t.dmgLv * CONFIG.UPGRADE.damageStep;
@@ -832,8 +888,14 @@ function enemyStatsForWave(w){
 }
 function spawnEnemy(){
   const angle = Math.random()*Math.PI*2;
-  const r = CONFIG.FIELD_RADIUS - 1;
-  const x = Math.cos(angle)*r, z = Math.sin(angle)*r;
+  const dirx = Math.cos(angle), dirz = Math.sin(angle);
+  // 依目前鏡頭可視範圍計算生成半徑，讓敵艦從畫面外緣駛入，而非憑空出現在可視海域中
+  const zHalf = Math.tan(camera.fov*Math.PI/360) * camera.position.y; // 螢幕高方向 → 世界 z
+  const xHalf = zHalf * camera.aspect;                                // 螢幕寬方向 → 世界 x
+  const rx = Math.abs(dirx) > 1e-4 ? xHalf/Math.abs(dirx) : Infinity;
+  const rz = Math.abs(dirz) > 1e-4 ? zHalf/Math.abs(dirz) : Infinity;
+  const r = Math.min(rx, rz) + 3;   // 落在畫面外緣約 3 單位處
+  const x = dirx*r, z = dirz*r;
   const st = enemyStatsForWave(state.wave);
   const mesh = makeEnemyMesh(state.wave);
   mesh.position.set(x, oceanHeight(x,z,state.time), z);
@@ -939,6 +1001,9 @@ function openUpgradeTargetRowFor(target){
   document.getElementById('lv-range').textContent = 'Lv.'+target.rangeLv;
   document.getElementById('up-heal').disabled = hp >= maxHp;
   document.getElementById('heal-desc').textContent = '恢復'+CONFIG.UPGRADE.healAmount+'（'+Math.round(hp)+'/'+maxHp+'）';
+  // 維修電流：僅要塞可升級，選塔時隱藏
+  document.getElementById('base-only-row').style.display = target.isBase ? 'flex' : 'none';
+  if(target.isBase) document.getElementById('lv-repair').textContent = 'Lv.'+target.repairLv;
   showBottomPanel('target');
 }
 function finishUpgrade(){
@@ -950,12 +1015,12 @@ function finishUpgrade(){
 }
 document.getElementById('up-firerate').addEventListener('click', ()=>{
   const t = state.currentUpgradeTarget;
-  if(t){ t.frLv++; if(!t.isBase) updateTowerVisual(t); }
+  if(t){ t.frLv++; if(t.isBase) updateBaseVisual(); else updateTowerVisual(t); }
   finishUpgrade();
 });
 document.getElementById('up-damage').addEventListener('click', ()=>{
   const t = state.currentUpgradeTarget;
-  if(t){ t.dmgLv++; if(!t.isBase) updateTowerVisual(t); }
+  if(t){ t.dmgLv++; if(t.isBase) updateBaseVisual(); else updateTowerVisual(t); }
   finishUpgrade();
 });
 document.getElementById('up-range').addEventListener('click', ()=>{
@@ -964,6 +1029,14 @@ document.getElementById('up-range').addEventListener('click', ()=>{
     t.rangeLv++;
     if(t.isBase) baseRing.scale.setScalar(towerRange(t));
     else updateTowerVisual(t);
+  }
+  finishUpgrade();
+});
+document.getElementById('up-repair').addEventListener('click', ()=>{
+  const t = state.currentUpgradeTarget;
+  if(t && t.isBase){
+    t.repairLv++;
+    if(t.repairLv === 1) t.repairTimer = repairCooldown(t); // 首次升級即啟動維修
   }
   finishUpgrade();
 });
@@ -1180,8 +1253,33 @@ function update(dt){
     }
   }
 
+  // 要塞維修電流：升級後每隔一段冷卻，自動修復「受損最嚴重」的一座砲塔
+  if(baseTurret.repairLv > 0){
+    baseTurret.repairTimer -= dt;
+    if(baseTurret.repairTimer <= 0){
+      let target = null, worst = 1;
+      for(const t of towers){
+        const f = t.hp / t.maxHp;
+        if(f < 0.999 && f < worst){ worst = f; target = t; }
+      }
+      if(target){
+        const amt = CONFIG.REPAIR.healBase + (baseTurret.repairLv-1)*CONFIG.REPAIR.healStep;
+        target.hp = Math.min(target.maxHp, target.hp + amt);
+        updateTowerVisual(target);
+        const fromP = new THREE.Vector3();
+        baseBarrelPivot.getWorldPosition(fromP);
+        const toP = target.mesh.position.clone(); toP.y += 1.6;
+        spawnLightning(fromP, toP);
+        baseTurret.repairTimer = repairCooldown(baseTurret);
+      } else {
+        baseTurret.repairTimer = 0.6; // 目前沒有受損目標，稍後再檢查
+      }
+    }
+  }
+
   updateBullets(dt);
   updateFx(dt);
+  updateLightnings(dt);
 }
 
 /* ================= Game over / restart ================= */
@@ -1203,7 +1301,10 @@ function resetGame(){
   baseTurret.dmgLv = 0;
   baseTurret.frLv = 0;
   baseTurret.rangeLv = 0;
+  baseTurret.repairLv = 0;
+  baseTurret.repairTimer = 0;
   baseRing.scale.setScalar(CONFIG.TOWER.range);
+  updateBaseVisual();
   Object.assign(state, {
     running:true, time:0, baseHp: CONFIG.BASE_MAX_HP, points:0, pointsSinceMilestone:0, kills:0,
     wave:0, waveEnemiesTotal:0, waveEnemiesSpawned:0, spawnTimer:0, spawnInterval:1,
