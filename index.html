@@ -829,57 +829,38 @@ function updateFx(dt){
   fxMesh.instanceMatrix.needsUpdate = true;
 }
 
-/* ================= Bullets ================= */
+/* ================= Projectiles (玩家與敵方共用同一套拋物線飛行邏輯) ================= */
 const bulletGeo = new THREE.SphereGeometry(0.16, 6, 6);
-const bulletMat = new THREE.MeshBasicMaterial({ color:0xfff2c9 });
-const bullets = [];
-function spawnBullet(from, to, damage, onHit){
-  const mesh = new THREE.Mesh(bulletGeo, bulletMat);
+const bulletMat = new THREE.MeshBasicMaterial({ color:0xfff2c9 });          // 玩家子彈：暖白
+const enemyBulletMat = new THREE.MeshBasicMaterial({ color:0xff7b3a });     // 敵方砲彈：橘
+const bullets = [];       // 玩家/要塞
+const enemyBullets = [];  // 砲擊艦
+function spawnProjectile(list, mat, from, to, speed, arc, onHit){
+  const mesh = new THREE.Mesh(bulletGeo, mat);
   mesh.position.copy(from);
   scene.add(mesh);
-  const dist = from.distanceTo(to);
-  const travel = Math.max(0.08, dist/26);
-  bullets.push({ mesh, from: from.clone(), to: to.clone(), t:0, travel, damage, onHit });
+  const travel = Math.max(0.08, from.distanceTo(to)/speed);
+  list.push({ mesh, from: from.clone(), to: to.clone(), t:0, travel, arc, onHit });
 }
-function updateBullets(dt){
-  for(let i=bullets.length-1;i>=0;i--){
-    const b = bullets[i];
-    b.t += dt/b.travel;
-    if(b.t >= 1){
-      b.mesh.position.copy(b.to);
-      scene.remove(b.mesh);
-      b.onHit();
-      bullets.splice(i,1);
-      continue;
-    }
-    b.mesh.position.lerpVectors(b.from, b.to, b.t);
-    b.mesh.position.y += Math.sin(b.t*Math.PI)*1.2;
-  }
+function spawnBullet(from, to, damage, onHit){
+  spawnProjectile(bullets, bulletMat, from, to, 26, 1.2, onHit);
 }
-
-/* ================= Enemy bullets (砲擊艦的砲彈) ================= */
-const enemyBulletMat = new THREE.MeshBasicMaterial({ color:0xff7b3a });
-const enemyBullets = [];
 function spawnEnemyBullet(from, to, onHit){
-  const mesh = new THREE.Mesh(bulletGeo, enemyBulletMat);
-  mesh.position.copy(from); scene.add(mesh);
-  const dist = from.distanceTo(to);
-  const travel = Math.max(0.1, dist/CONFIG.ENEMY.gunner.bulletSpeed);
-  enemyBullets.push({ mesh, from:from.clone(), to:to.clone(), t:0, travel, onHit });
+  spawnProjectile(enemyBullets, enemyBulletMat, from, to, CONFIG.ENEMY.gunner.bulletSpeed, 1.0, onHit);
 }
-function updateEnemyBullets(dt){
-  for(let i=enemyBullets.length-1;i>=0;i--){
-    const b = enemyBullets[i];
+function updateProjectiles(list, dt){
+  for(let i=list.length-1;i>=0;i--){
+    const b = list[i];
     b.t += dt/b.travel;
     if(b.t >= 1){
       b.mesh.position.copy(b.to);
       scene.remove(b.mesh);
       b.onHit();
-      enemyBullets.splice(i,1);
+      list.splice(i,1);
       continue;
     }
     b.mesh.position.lerpVectors(b.from, b.to, b.t);
-    b.mesh.position.y += Math.sin(b.t*Math.PI)*1.0;
+    b.mesh.position.y += Math.sin(b.t*Math.PI)*b.arc;
   }
 }
 
@@ -949,7 +930,6 @@ const state = {
   time:0,
   baseHp: CONFIG.BASE_MAX_HP,
   points:0,
-  pointsSinceMilestone:0,
   kills:0,
   wave:0,
   waveEnemiesTotal:0,
@@ -963,7 +943,6 @@ const state = {
   demolishMode:false,
   currentUpgradeTarget:null,
   spawnQueue:[],
-  modalQueue:0,
   gameOver:false,
   paused:false,
   speedMul:1,
@@ -1384,7 +1363,7 @@ function update(dt){
   state.time += dt;
   oceanUniforms.uTime.value = state.time;
   for(const t of towers) t.mesh.position.y = oceanHeight(t.x, t.z, state.time)+0.05;
-  for(const e of enemies) e.mesh.position.y = oceanHeight(e.x, e.z, state.time);
+  // 敵艦的高度在下方移動迴圈中隨新座標一併設定，此處不需重複計算
   baseGroup.position.y = oceanHeight(0,0,state.time)*0.15;
 
   // 鏡頭隨時間緩慢拉遠，逐漸展開可視海域範圍（有上限，不會無限拉遠）
@@ -1601,8 +1580,8 @@ function update(dt){
     }
   }
 
-  updateBullets(dt);
-  updateEnemyBullets(dt);
+  updateProjectiles(bullets, dt);
+  updateProjectiles(enemyBullets, dt);
   updateFx(dt);
   updateLightnings(dt);
   updateHealPulses(dt);
@@ -1637,10 +1616,10 @@ function resetGame(){
   baseRing.scale.setScalar(CONFIG.TOWER.range);
   updateBaseVisual();
   Object.assign(state, {
-    running:true, time:0, baseHp: CONFIG.BASE_MAX_HP, points:0, pointsSinceMilestone:0, kills:0,
+    running:true, time:0, baseHp: CONFIG.BASE_MAX_HP, points:0, kills:0,
     wave:0, waveEnemiesTotal:0, waveEnemiesSpawned:0, spawnTimer:0, spawnInterval:1,
     resting:true, restTimer:CONFIG.START_COUNTDOWN, placementMode:false, upgradeSelectMode:false, demolishMode:false,
-    currentUpgradeTarget:null, spawnQueue:[], modalQueue:0, gameOver:false, paused:false, speedMul:1, totalTowersBuilt:0, playTime:0
+    currentUpgradeTarget:null, spawnQueue:[], gameOver:false, paused:false, speedMul:1, totalTowersBuilt:0, playTime:0
   });
   setPaused(false);
   applySpeed();
