@@ -248,7 +248,7 @@
         <div class="action-row" id="base-only-row" style="display:none; margin-top:6px;">
           <button class="action-btn small" id="up-repair">🔧 維修電流（要塞專屬）<br><span id="lv-repair">Lv.0</span></button>
         </div>
-        <div class="back-link" id="upgrade-back">‹ 返回</div>
+        <div class="back-link">點畫面空白處返回</div>
       </div>
     </div>
     <div id="toast">位置不可用，換個地方吧</div>
@@ -1155,10 +1155,6 @@ document.getElementById('cancel-build').addEventListener('click', ()=>{
   state.demolishMode = false;
   showBottomPanel('default');
 });
-document.getElementById('upgrade-back').addEventListener('click', ()=>{
-  state.currentUpgradeTarget = null;
-  showBottomPanel('default');
-});
 // 更新升級面板顯示（不改變選取目標）；升級後面板保持開啟以便連續升級
 function refreshUpgradeTargetRow(){
   const t = state.currentUpgradeTarget;
@@ -1316,6 +1312,13 @@ canvas.addEventListener('click', (e)=>{
     if(!target){ showToast('請點擊砲塔或要塞'); return; }
     state.upgradeSelectMode = false;
     openUpgradeTargetRowFor(target);
+    return;
+  }
+  // 升級面板開啟時：點到別的塔→改升級它；點空白處→返回
+  if(state.currentUpgradeTarget){
+    const target = pickTowerAt(e.clientX, e.clientY);
+    if(target){ openUpgradeTargetRowFor(target); }
+    else { state.currentUpgradeTarget = null; showBottomPanel('default'); refreshActionButtons(); }
     return;
   }
   if(state.demolishMode){
