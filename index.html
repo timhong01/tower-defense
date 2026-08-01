@@ -231,6 +231,7 @@
       <div id="default-actions" class="action-row">
         <button class="action-btn" id="btn-build">🏗️<br>建塔</button>
         <button class="action-btn" id="btn-upgrade">⬆️<br>升級</button>
+        <button class="action-btn" id="btn-demolish">🗑️<br>拆除</button>
       </div>
       <div id="hint-row">
         <span id="hint-text">點擊海面放置新塔</span>
@@ -318,16 +319,23 @@ const CONFIG = {
     attackDamage: 8,      // 打要塞
     meleeDps: 14,         // 撞砲塔
     meleeRange: 2.6,
-    turnRate: 1.5         // 每秒最大轉向弧度（越小轉彎越大、船味越重）
+    turnRate: 1.5,        // 每秒最大轉向弧度（越小轉彎越大、船味越重）
+    // 砲擊艦：站遠處遠程轟擊砲塔／要塞，不撞塔
+    gunner: { hpMult:1.7, speedMult:0.7, standoff:8, fireRange:9.5, cooldown:2.2, damage:11, bulletSpeed:24 },
+    // 補血艦：不攻擊，定期治療周圍受損的敵艦
+    healer: { hpMult:1.35, speedMult:0.85, healRadius:5.5, healCooldown:2.6, healFrac:0.13 }
   },
   WAVE: {
     baseCount: 5, countPerWave: 2, countCap: 22,
     spawnIntervalBase: 1.05, spawnIntervalPerWave: 0.035, spawnIntervalMin: 0.38,
-    restSeconds: 8
+    restSeconds: 8,
+    gunnerFromWave: 4, gunnerCap: 6,   // 砲擊艦自第4波起混入，上限6
+    healerFromWave: 6, healerCap: 3    // 補血艦自第6波起混入，上限3
   },
   START_COUNTDOWN: 10,
   START_POINTS: 5,
-  UPGRADE_COST: 5      // 每次建塔／升級消耗的點數
+  UPGRADE_COST: 5,     // 每次建塔／升級消耗的點數
+  DEMOLISH_REFUND: 3   // 拆除一座砲塔退還的點數（可重新佈署到更好的位置）
 };
 
 /* ================= Wave function shared by shader + JS ================= */
@@ -536,6 +544,18 @@ const ENEMY_TIERS = [0,1,2,3,4].map(i=>({
   trim: new THREE.MeshStandardMaterial({ color:[0x161616,0x1a1a1a,0x2a1010,0x2a102a,0x3a0a0a][i], roughness:0.45, metalness:0.55 })
 }));
 function enemyTierForWave(w){ return Math.max(0, Math.min(ENEMY_TIERS.length-1, Math.floor((w-1)/2))); }
+// 砲擊艦：深色金屬 + 橘色砲口光；補血艦：青綠塗裝 + 發光十字
+const GUNNER_MAT = {
+  hull: new THREE.MeshStandardMaterial({ color:0x2e343a, roughness:0.6, metalness:0.4 }),
+  metal: new THREE.MeshStandardMaterial({ color:0x14181c, roughness:0.4, metalness:0.6 }),
+  glow: new THREE.MeshStandardMaterial({ color:0xff7b3a, emissive:0xff5a1e, emissiveIntensity:0.85, roughness:0.5 }),
+  sail: new THREE.MeshStandardMaterial({ color:0x3a2a20, roughness:0.7, side:THREE.DoubleSide })
+};
+const HEALER_MAT = {
+  hull: new THREE.MeshStandardMaterial({ color:0x1f6f5c, roughness:0.6 }),
+  glow: new THREE.MeshStandardMaterial({ color:0x8dffcf, emissive:0x35ffa0, emissiveIntensity:0.95, roughness:0.4 }),
+  sail: new THREE.MeshStandardMaterial({ color:0x2fbf8f, roughness:0.6, emissive:0x0d3b2c, side:THREE.DoubleSide })
+};
 
 const hitProxyGeo = new THREE.CylinderGeometry(2.0, 2.0, 4.2, 8);
 const hitProxyMat = new THREE.MeshBasicMaterial({ transparent:true, opacity:0, depthWrite:false, depthTest:false });
@@ -662,7 +682,7 @@ function updateBaseVisual(){
   baseBarrelMat.emissiveIntensity = Math.min(0.7, baseTurret.frLv*0.16);
 }
 
-function makeEnemyMesh(wave){
+function makeRamMesh(wave){
   const tier = enemyTierForWave(wave);
   const mats = ENEMY_TIERS[tier];
   const g = new THREE.Group();
@@ -711,6 +731,56 @@ function makeEnemyMesh(wave){
   // 整體尺寸隨階層放大，強化「敵人升級」的視覺分量
   g.scale.setScalar(1 + tier*0.12);
   return g;
+}
+
+/* 砲擊艦：厚重船體 + 前上方大臼砲(橘色砲口光)，遠程轟擊砲塔 */
+function makeGunnerMesh(wave){
+  const tier = enemyTierForWave(wave);
+  const g = new THREE.Group();
+  const hull = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.8, 4), GUNNER_MAT.hull);
+  hull.rotation.x = Math.PI/2; hull.rotation.y = Math.PI/4; hull.position.y = 0.28;
+  g.add(hull);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.3, 0.95), GUNNER_MAT.metal);
+  deck.position.y = 0.5; g.add(deck);
+  // 大臼砲（抬頭朝前）
+  const gun = new THREE.Group();
+  gun.position.set(0, 0.62, 0.1);
+  gun.rotation.x = -0.55;
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 1.1, 10), GUNNER_MAT.metal);
+  barrel.position.y = 0.55; gun.add(barrel);
+  const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.14, 10), GUNNER_MAT.glow);
+  muzzle.position.y = 1.12; gun.add(muzzle);
+  g.add(gun);
+  const sail = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.9), GUNNER_MAT.sail);
+  sail.position.set(0, 0.85, -0.55); g.add(sail);
+  g.scale.setScalar(1.05 + tier*0.1);
+  return g;
+}
+
+/* 補血艦：青綠船體 + 桅頂發光十字，象徵醫療補給 */
+function makeHealerMesh(wave){
+  const tier = enemyTierForWave(wave);
+  const g = new THREE.Group();
+  const hull = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.85, 4), HEALER_MAT.hull);
+  hull.rotation.x = Math.PI/2; hull.rotation.y = Math.PI/4; hull.position.y = 0.26;
+  g.add(hull);
+  const sail = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.05), HEALER_MAT.sail);
+  sail.position.set(0, 0.9, 0); g.add(sail);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.4, 6), HEALER_MAT.hull);
+  mast.position.y = 1.0; g.add(mast);
+  const cross = new THREE.Group(); cross.position.y = 1.7;
+  cross.add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.12), HEALER_MAT.glow));
+  cross.add(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.12), HEALER_MAT.glow));
+  g.add(cross);
+  g.userData.glowCross = cross;
+  g.scale.setScalar(1.0 + tier*0.1);
+  return g;
+}
+
+function makeEnemyMesh(wave, type){
+  if(type==='gunner') return makeGunnerMesh(wave);
+  if(type==='healer') return makeHealerMesh(wave);
+  return makeRamMesh(wave);
 }
 
 /* ================= Explosion particle system (manual, lightweight) ================= */
@@ -788,6 +858,56 @@ function updateBullets(dt){
   }
 }
 
+/* ================= Enemy bullets (砲擊艦的砲彈) ================= */
+const enemyBulletMat = new THREE.MeshBasicMaterial({ color:0xff7b3a });
+const enemyBullets = [];
+function spawnEnemyBullet(from, to, onHit){
+  const mesh = new THREE.Mesh(bulletGeo, enemyBulletMat);
+  mesh.position.copy(from); scene.add(mesh);
+  const dist = from.distanceTo(to);
+  const travel = Math.max(0.1, dist/CONFIG.ENEMY.gunner.bulletSpeed);
+  enemyBullets.push({ mesh, from:from.clone(), to:to.clone(), t:0, travel, onHit });
+}
+function updateEnemyBullets(dt){
+  for(let i=enemyBullets.length-1;i>=0;i--){
+    const b = enemyBullets[i];
+    b.t += dt/b.travel;
+    if(b.t >= 1){
+      b.mesh.position.copy(b.to);
+      scene.remove(b.mesh);
+      b.onHit();
+      enemyBullets.splice(i,1);
+      continue;
+    }
+    b.mesh.position.lerpVectors(b.from, b.to, b.t);
+    b.mesh.position.y += Math.sin(b.t*Math.PI)*1.0;
+  }
+}
+
+/* ================= Heal pulse (補血艦的治療脈衝環) ================= */
+const healPulses = [];
+const healPulseGeo = new THREE.RingGeometry(0.9, 1.0, 32);
+const healPulseMatProto = new THREE.MeshBasicMaterial({ color:0x8dffcf, transparent:true, opacity:0.9, side:THREE.DoubleSide });
+function spawnHealPulse(pos){
+  const m = new THREE.Mesh(healPulseGeo, healPulseMatProto.clone());
+  m.rotation.x = -Math.PI/2;
+  m.position.copy(pos); m.position.y += 0.25;
+  scene.add(m);
+  healPulses.push({ mesh:m, life:0, maxLife:0.5 });
+}
+function updateHealPulses(dt){
+  for(let i=healPulses.length-1;i>=0;i--){
+    const p = healPulses[i];
+    p.life += dt;
+    const k = p.life/p.maxLife;
+    p.mesh.scale.setScalar(0.5 + k*CONFIG.ENEMY.healer.healRadius);
+    p.mesh.material.opacity = 0.9*(1-k);
+    if(p.life >= p.maxLife){
+      scene.remove(p.mesh); p.mesh.material.dispose(); healPulses.splice(i,1);
+    }
+  }
+}
+
 /* ================= Repair lightning (要塞維修電流的電擊視覺) ================= */
 const lightnings = [];
 const lightningMatProto = new THREE.LineBasicMaterial({ color:0x9fe8ff, transparent:true, opacity:1 });
@@ -841,7 +961,9 @@ const state = {
   restTimer:2,
   placementMode:false,
   upgradeSelectMode:false,
+  demolishMode:false,
   currentUpgradeTarget:null,
+  spawnQueue:[],
   modalQueue:0,
   gameOver:false,
   paused:false,
@@ -892,11 +1014,12 @@ function addTower(x, z){
 }
 
 /* ================= Enemy spawn ================= */
-function enemyStatsForWave(w){
-  return {
-    hp: CONFIG.ENEMY.baseHp + w*CONFIG.ENEMY.hpPerWave,
-    speed: Math.min(CONFIG.ENEMY.speedCap, CONFIG.ENEMY.baseSpeed + w*CONFIG.ENEMY.speedPerWave)
-  };
+function enemyStatsForWave(w, type){
+  const hp = CONFIG.ENEMY.baseHp + w*CONFIG.ENEMY.hpPerWave;
+  const spd = Math.min(CONFIG.ENEMY.speedCap, CONFIG.ENEMY.baseSpeed + w*CONFIG.ENEMY.speedPerWave);
+  if(type==='gunner') return { hp: hp*CONFIG.ENEMY.gunner.hpMult, speed: spd*CONFIG.ENEMY.gunner.speedMult };
+  if(type==='healer') return { hp: hp*CONFIG.ENEMY.healer.hpMult, speed: spd*CONFIG.ENEMY.healer.speedMult };
+  return { hp, speed: spd };
 }
 function spawnEnemy(){
   const angle = Math.random()*Math.PI*2;
@@ -908,17 +1031,20 @@ function spawnEnemy(){
   const rz = Math.abs(dirz) > 1e-4 ? zHalf/Math.abs(dirz) : Infinity;
   const r = Math.min(rx, rz) + 3;   // 落在畫面外緣約 3 單位處
   const x = dirx*r, z = dirz*r;
-  const st = enemyStatsForWave(state.wave);
-  const mesh = makeEnemyMesh(state.wave);
+  const type = state.spawnQueue.length ? state.spawnQueue.pop() : 'ram';
+  const st = enemyStatsForWave(state.wave, type);
+  const mesh = makeEnemyMesh(state.wave, type);
   mesh.position.set(x, oceanHeight(x,z,state.time), z);
   scene.add(mesh);
   // 初始航向大致朝內，但帶點隨機偏移，讓入場路線各自不同、呈弧線
   const headingToCenter = Math.atan2(-x, -z);
   mesh.rotation.y = headingToCenter;
   enemies.push({
-    mesh, x, z, hp:st.hp, maxHp:st.hp, speed:st.speed, dead:false,
+    mesh, x, z, hp:st.hp, maxHp:st.hp, speed:st.speed, dead:false, type,
     heading: headingToCenter + (Math.random()-0.5)*1.2,
-    turnRate: CONFIG.ENEMY.turnRate * (0.85 + Math.random()*0.3)
+    turnRate: CONFIG.ENEMY.turnRate * (0.85 + Math.random()*0.3),
+    fireTimer: Math.random()*CONFIG.ENEMY.gunner.cooldown,
+    healTimer: Math.random()*CONFIG.ENEMY.healer.healCooldown
   });
 }
 
@@ -926,6 +1052,20 @@ function startWave(n){
   state.wave = n;
   state.waveEnemiesTotal = Math.min(CONFIG.WAVE.countCap, CONFIG.WAVE.baseCount + (n-1)*CONFIG.WAVE.countPerWave);
   state.waveEnemiesSpawned = 0;
+  // 組出本波的敵種隊列：撞塔艦為主，砲擊艦／補血艦隨波數少量混入
+  {
+    const total = state.waveEnemiesTotal;
+    let g = n>=CONFIG.WAVE.gunnerFromWave ? Math.min(CONFIG.WAVE.gunnerCap, 1+Math.floor((n-CONFIG.WAVE.gunnerFromWave)/2)) : 0;
+    let h = n>=CONFIG.WAVE.healerFromWave ? Math.min(CONFIG.WAVE.healerCap, 1+Math.floor((n-CONFIG.WAVE.healerFromWave)/3)) : 0;
+    g = Math.min(g, Math.max(0, total-2));
+    h = Math.min(h, Math.max(0, total-2-g));
+    const q = [];
+    for(let i=0;i<g;i++) q.push('gunner');
+    for(let i=0;i<h;i++) q.push('healer');
+    while(q.length < total) q.push('ram');
+    for(let i=q.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const tmp=q[i]; q[i]=q[j]; q[j]=tmp; }
+    state.spawnQueue = q;
+  }
   state.spawnInterval = Math.max(CONFIG.WAVE.spawnIntervalMin, CONFIG.WAVE.spawnIntervalBase - (n-1)*CONFIG.WAVE.spawnIntervalPerWave);
   state.spawnTimer = 0;
   state.resting = false;
@@ -968,6 +1108,7 @@ const creditHint = document.getElementById('credit-hint');
 const hintText = document.getElementById('hint-text');
 const btnBuild = document.getElementById('btn-build');
 const btnUpgrade = document.getElementById('btn-upgrade');
+const btnDemolish = document.getElementById('btn-demolish');
 
 function showBottomPanel(which){
   defaultActions.style.display = which==='default' ? 'flex' : 'none';
@@ -982,6 +1123,7 @@ function refreshActionButtons(){
   btnBuild.classList.toggle('actionable', !buildDisabled);
   btnUpgrade.disabled = !has;
   btnUpgrade.classList.toggle('actionable', has);
+  btnDemolish.disabled = towers.length === 0;   // 拆除不需點數，有塔就能用
   creditHint.textContent = has
     ? ('可建造／升級 '+Math.floor(state.points/cost)+' 次（每次 '+cost+' 點）')
     : ('再累積 '+(cost-state.points)+' 點即可建造或升級');
@@ -998,9 +1140,16 @@ btnUpgrade.addEventListener('click', ()=>{
   hintText.textContent = '點擊要升級的砲塔（或要塞）';
   showBottomPanel('hint');
 });
+btnDemolish.addEventListener('click', ()=>{
+  if(btnDemolish.disabled) return;
+  state.demolishMode = true;
+  hintText.textContent = '點擊要拆除的砲塔（退還 '+CONFIG.DEMOLISH_REFUND+' 點）';
+  showBottomPanel('hint');
+});
 document.getElementById('cancel-build').addEventListener('click', ()=>{
   state.placementMode = false;
   state.upgradeSelectMode = false;
+  state.demolishMode = false;
   showBottomPanel('default');
 });
 document.getElementById('upgrade-back').addEventListener('click', ()=>{
@@ -1147,6 +1296,25 @@ canvas.addEventListener('click', (e)=>{
     openUpgradeTargetRowFor(target);
     return;
   }
+  if(state.demolishMode){
+    const target = pickTowerAt(e.clientX, e.clientY);
+    if(!target){ showToast('請點擊要拆除的砲塔'); return; }
+    if(target.isBase){ showToast('要塞無法拆除'); return; }
+    const idx = towers.indexOf(target);
+    if(idx >= 0){
+      spawnExplosion(target.mesh.position, true);
+      scene.remove(target.mesh);
+      towers.splice(idx, 1);
+      updateTowerCountUi();
+      state.points += CONFIG.DEMOLISH_REFUND;
+      updatePointUi();
+      showToast('已拆除，退還 '+CONFIG.DEMOLISH_REFUND+' 點');
+    }
+    state.demolishMode = false;
+    showBottomPanel('default');
+    refreshActionButtons();
+    return;
+  }
 });
 
 /* ================= Milestone check ================= */
@@ -1220,8 +1388,8 @@ function update(dt){
     const e = enemies[i];
     if(e.dead){ enemies.splice(i,1); continue; }
 
-    // 不論鎖定何處，只要貼近要塞就直接撞擊要塞
-    if(Math.hypot(e.x, e.z) < CONFIG.BASE_RADIUS){
+    // 只有撞塔艦(ram)會直接撞擊要塞
+    if(e.type==='ram' && Math.hypot(e.x, e.z) < CONFIG.BASE_RADIUS){
       state.baseHp -= CONFIG.ENEMY.attackDamage;
       spawnExplosion(e.mesh.position, false);
       scene.remove(e.mesh);
@@ -1231,31 +1399,87 @@ function update(dt){
       continue;
     }
 
-    // 像船一樣以最大轉向速率逐漸修正航向，朝獵物畫出弧線，而非瞬間對準走直線
-    const desired = Math.atan2(preyX - e.x, preyZ - e.z);
+    // 決定操舵目標：砲擊艦朝最近的塔靠到站位距離，其餘朝共同獵物(最弱塔/要塞)
+    let tx = preyX, tz = preyZ;
+    if(e.type==='gunner'){
+      let nd = Infinity, nt = null;
+      for(const t of towers){ const d = Math.hypot(e.x-t.x, e.z-t.z); if(d < nd){ nd = d; nt = t; } }
+      if(nt){ tx = nt.x; tz = nt.z; } else { tx = 0; tz = 0; }
+    }
+
+    // 像船一樣以最大轉向速率逐漸修正航向，畫出弧線而非瞬間對準走直線
+    const desired = Math.atan2(tx - e.x, tz - e.z);
     let diff = desired - e.heading;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff)); // 收斂到 [-π, π]
     const maxStep = e.turnRate*dt;
     e.heading += Math.max(-maxStep, Math.min(maxStep, diff));
+
+    // 砲擊艦抵達站位距離後停止前進(仍轉向瞄準)
+    let moveSpeed = e.speed;
+    if(e.type==='gunner' && Math.hypot(tx-e.x, tz-e.z) <= CONFIG.ENEMY.gunner.standoff) moveSpeed = 0;
     const nx = Math.sin(e.heading), nz = Math.cos(e.heading);
-    e.x += nx*e.speed*dt;
-    e.z += nz*e.speed*dt;
+    e.x += nx*moveSpeed*dt;
+    e.z += nz*moveSpeed*dt;
     e.mesh.position.set(e.x, oceanHeight(e.x,e.z,state.time), e.z);
     e.mesh.rotation.y = e.heading;
 
-    // melee vs towers
-    for(let ti=towers.length-1;ti>=0;ti--){
-      const t = towers[ti];
-      if(Math.hypot(e.x-t.x, e.z-t.z) < CONFIG.ENEMY.meleeRange){
-        t.hp -= CONFIG.ENEMY.meleeDps*dt;
-        if(t.hp <= 0){
-          spawnExplosion(t.mesh.position, true);
-          scene.remove(t.mesh);
-          towers.splice(ti,1);
-          updateTowerCountUi();
-        } else {
-          updateTowerVisual(t);
+    if(e.type==='ram'){
+      // 撞塔艦：接觸砲塔即持續造成耐久傷害
+      for(let ti=towers.length-1;ti>=0;ti--){
+        const t = towers[ti];
+        if(Math.hypot(e.x-t.x, e.z-t.z) < CONFIG.ENEMY.meleeRange){
+          t.hp -= CONFIG.ENEMY.meleeDps*dt;
+          if(t.hp <= 0){
+            spawnExplosion(t.mesh.position, true);
+            scene.remove(t.mesh);
+            towers.splice(ti,1);
+            updateTowerCountUi();
+          } else {
+            updateTowerVisual(t);
+          }
         }
+      }
+    } else if(e.type==='gunner'){
+      // 砲擊艦：遠程轟擊射程內最近的塔；沒有塔則轟要塞
+      e.fireTimer -= dt;
+      if(e.fireTimer <= 0){
+        let tgt = null, td = CONFIG.ENEMY.gunner.fireRange;
+        for(const t of towers){ const d = Math.hypot(e.x-t.x, e.z-t.z); if(d <= td){ td = d; tgt = t; } }
+        const baseInRange = !tgt && Math.hypot(e.x, e.z) <= CONFIG.ENEMY.gunner.fireRange;
+        if(tgt || baseInRange){
+          e.fireTimer = CONFIG.ENEMY.gunner.cooldown;
+          const dmg = CONFIG.ENEMY.gunner.damage;
+          const from = e.mesh.position.clone(); from.y += 0.9;
+          const to = tgt ? (()=>{ const p = tgt.mesh.position.clone(); p.y += 1.2; return p; })() : new THREE.Vector3(0, 3, 0);
+          const tRef = tgt;
+          spawnMuzzleFlash(from);
+          spawnEnemyBullet(from, to, ()=>{
+            if(!tRef){ state.baseHp -= dmg; updateHpUi(); spawnExplosion(to, false); if(state.baseHp<=0) triggerGameOver(); return; }
+            const idx = towers.indexOf(tRef);
+            if(idx < 0) return; // 塔已不在
+            tRef.hp -= dmg;
+            spawnExplosion(to, false);
+            if(tRef.hp <= 0){ spawnExplosion(tRef.mesh.position, true); scene.remove(tRef.mesh); towers.splice(idx,1); updateTowerCountUi(); }
+            else updateTowerVisual(tRef);
+          });
+        } else {
+          e.fireTimer = 0.4; // 沒有可打目標，稍後再看
+        }
+      }
+    } else if(e.type==='healer'){
+      // 補血艦：定期治療範圍內受損的敵艦
+      e.healTimer -= dt;
+      if(e.healTimer <= 0){
+        e.healTimer = CONFIG.ENEMY.healer.healCooldown;
+        let healed = false;
+        for(const o of enemies){
+          if(o===e || o.dead || o.hp >= o.maxHp) continue;
+          if(Math.hypot(o.x-e.x, o.z-e.z) <= CONFIG.ENEMY.healer.healRadius){
+            o.hp = Math.min(o.maxHp, o.hp + o.maxHp*CONFIG.ENEMY.healer.healFrac);
+            healed = true;
+          }
+        }
+        if(healed) spawnHealPulse(e.mesh.position);
       }
     }
   }
@@ -1321,8 +1545,10 @@ function update(dt){
   }
 
   updateBullets(dt);
+  updateEnemyBullets(dt);
   updateFx(dt);
   updateLightnings(dt);
+  updateHealPulses(dt);
 }
 
 /* ================= Game over / restart ================= */
@@ -1340,6 +1566,11 @@ function resetGame(){
   towers.length = 0; enemies.length = 0;
   for(const b of bullets) scene.remove(b.mesh);
   bullets.length = 0;
+  for(const b of enemyBullets) scene.remove(b.mesh);
+  enemyBullets.length = 0;
+  for(const p of healPulses){ scene.remove(p.mesh); p.mesh.material.dispose(); }
+  healPulses.length = 0;
+  state.spawnQueue = [];
   baseTurret.cooldown = 0;
   baseTurret.dmgLv = 0;
   baseTurret.frLv = 0;
@@ -1351,8 +1582,8 @@ function resetGame(){
   Object.assign(state, {
     running:true, time:0, baseHp: CONFIG.BASE_MAX_HP, points:0, pointsSinceMilestone:0, kills:0,
     wave:0, waveEnemiesTotal:0, waveEnemiesSpawned:0, spawnTimer:0, spawnInterval:1,
-    resting:true, restTimer:CONFIG.START_COUNTDOWN, placementMode:false, upgradeSelectMode:false,
-    currentUpgradeTarget:null, modalQueue:0, gameOver:false, paused:false, speedMul:1, totalTowersBuilt:0, playTime:0
+    resting:true, restTimer:CONFIG.START_COUNTDOWN, placementMode:false, upgradeSelectMode:false, demolishMode:false,
+    currentUpgradeTarget:null, spawnQueue:[], modalQueue:0, gameOver:false, paused:false, speedMul:1, totalTowersBuilt:0, playTime:0
   });
   setPaused(false);
   applySpeed();
