@@ -34,12 +34,10 @@
   }
   #stage{
     position: relative;
-    width: 100vw; height: 100vh;
-    aspect-ratio: 9 / 16;
-    max-height: 100vh;
-    max-width: min(100vw, 56.25vh);
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;   /* 動態視窗高度：填滿整個螢幕，隨網址列顯示/隱藏調整，不再被裁切 */
     background: #000;
-    box-shadow: 0 0 60px rgba(0,0,0,0.6);
     overflow: hidden;
   }
   #gl{ position:absolute; inset:0; display:block; width:100%; height:100%; }
@@ -221,6 +219,7 @@
     <div id="side-controls">
       <button id="pause-btn" aria-label="暫停 / 繼續">⏸</button>
       <button id="speed-btn" aria-label="加速"><span id="speed-label">1×</span></button>
+      <button id="fs-btn" aria-label="全螢幕">⛶</button>
     </div>
 
     <div id="wave-banner">第 <span id="wave-banner-num">1</span> 波<span class="sub">敵艦逼近</span></div>
@@ -329,8 +328,8 @@ const CONFIG = {
     baseCount: 5, countPerWave: 2, countCap: 22,
     spawnIntervalBase: 1.05, spawnIntervalPerWave: 0.035, spawnIntervalMin: 0.38,
     restSeconds: 8,
-    gunnerFromWave: 4, gunnerCap: 6,   // 砲擊艦自第4波起混入，上限6
-    healerFromWave: 6, healerCap: 3    // 補血艦自第6波起混入，上限3
+    gunnerFromWave: 8, gunnerCap: 6,    // 砲擊艦自第8波起混入，上限6
+    healerFromWave: 12, healerCap: 3    // 補血艦自第12波起混入，上限3
   },
   START_COUNTDOWN: 10,
   START_POINTS: 5,
@@ -1259,6 +1258,23 @@ function applySpeed(){
 speedBtn.addEventListener('click', ()=>{
   state.speedMul = state.speedMul >= 3 ? 1 : state.speedMul + 1;
   applySpeed();
+});
+
+/* ================= Fullscreen 全螢幕（隱藏瀏覽器網址列） ================= */
+const fsBtn = document.getElementById('fs-btn');
+fsBtn.addEventListener('click', ()=>{
+  const doc = document, el = doc.documentElement;
+  const isFs = doc.fullscreenElement || doc.webkitFullscreenElement;
+  if(!isFs){
+    (el.requestFullscreen || el.webkitRequestFullscreen || (()=>{})).call(el);
+  } else {
+    (doc.exitFullscreen || doc.webkitExitFullscreen || (()=>{})).call(doc);
+  }
+  setTimeout(resize, 200); // 進出全螢幕後尺寸會變，重算畫布
+});
+document.addEventListener('fullscreenchange', ()=>{
+  fsBtn.textContent = (document.fullscreenElement||document.webkitFullscreenElement) ? '⛗' : '⛶';
+  setTimeout(resize, 100);
 });
 
 /* ================= Pointer / placement / upgrade target picking ================= */
