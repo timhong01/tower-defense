@@ -1045,7 +1045,9 @@ function spawnEnemy(){
     heading: headingToCenter + (Math.random()-0.5)*1.2,
     turnRate: CONFIG.ENEMY.turnRate * (0.85 + Math.random()*0.3),
     fireTimer: Math.random()*CONFIG.ENEMY.gunner.cooldown,
-    healTimer: Math.random()*CONFIG.ENEMY.healer.healCooldown
+    healTimer: Math.random()*CONFIG.ENEMY.healer.healCooldown,
+    orbitDir: Math.random()<0.5 ? 1 : -1,        // 砲擊艦繞行方向
+    orbitTimer: 2.5 + Math.random()*3            // 每隔一陣子換向，遊走更自然
   });
 }
 
@@ -1428,16 +1430,31 @@ function update(dt){
       if(nt){ tx = nt.x; tz = nt.z; } else { tx = 0; tz = 0; }
     }
 
+    // 預設：朝目標直線靠近
+    let desiredHeading = Math.atan2(tx - e.x, tz - e.z);
+    let moveSpeed = e.speed;
+    if(e.type==='gunner'){
+      const distT = Math.hypot(tx - e.x, tz - e.z);
+      const stand = CONFIG.ENEMY.gunner.standoff;
+      if(distT <= stand*1.08){
+        // 進入射程後不再呆立，改為繞著目標側向遊走(strafe)並維持站位距離
+        e.orbitTimer -= dt;
+        if(e.orbitTimer <= 0){ e.orbitDir *= -1; e.orbitTimer = 2.5 + Math.random()*3; }
+        const toT = Math.atan2(tx - e.x, tz - e.z);
+        const tang = toT + e.orbitDir*Math.PI/2;
+        const kRad = Math.max(-1, Math.min(1, (distT - stand)/2)); // 太近→往外, 太遠→往內
+        const vx = Math.sin(tang) + Math.sin(toT)*kRad;
+        const vz = Math.cos(tang) + Math.cos(toT)*kRad;
+        desiredHeading = Math.atan2(vx, vz);
+        moveSpeed = e.speed * 0.6;
+      }
+    }
+
     // 像船一樣以最大轉向速率逐漸修正航向，畫出弧線而非瞬間對準走直線
-    const desired = Math.atan2(tx - e.x, tz - e.z);
-    let diff = desired - e.heading;
+    let diff = desiredHeading - e.heading;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff)); // 收斂到 [-π, π]
     const maxStep = e.turnRate*dt;
     e.heading += Math.max(-maxStep, Math.min(maxStep, diff));
-
-    // 砲擊艦抵達站位距離後停止前進(仍轉向瞄準)
-    let moveSpeed = e.speed;
-    if(e.type==='gunner' && Math.hypot(tx-e.x, tz-e.z) <= CONFIG.ENEMY.gunner.standoff) moveSpeed = 0;
     const nx = Math.sin(e.heading), nz = Math.cos(e.heading);
     e.x += nx*moveSpeed*dt;
     e.z += nz*moveSpeed*dt;
