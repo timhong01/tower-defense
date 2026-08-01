@@ -69,6 +69,12 @@
     padding: 4px 10px; display:flex; align-items:center; gap:5px; white-space:nowrap;
   }
   .pill .n{ color:var(--gold); font-size:19px; }
+  #pause-btn{
+    margin-left:auto; pointer-events:auto; width:36px; height:32px; flex:0 0 auto;
+    background: var(--panel); border:1px solid var(--panel-line); border-radius:10px;
+    color: var(--foam); font-size:15px; line-height:1; display:flex; align-items:center; justify-content:center;
+  }
+  #pause-btn:active{ filter:brightness(1.2); }
 
   #wave-banner{
     position:absolute; top:38%; left:50%; transform:translate(-50%,-50%) scale(.8);
@@ -201,8 +207,9 @@
       </div>
       <div class="hud-row">
         <div class="pill">⚔️ <span class="n" id="kill-num">0</span></div>
-        <div class="pill">✦ <span class="n" id="point-num">0</span><span style="opacity:.55;font-size:13px">/5</span></div>
+        <div class="pill">✦ <span class="n" id="point-num">0</span><span style="opacity:.55;font-size:13px">點</span></div>
         <div class="pill">🗼 <span class="n" id="tower-num">0</span></div>
+        <button id="pause-btn" aria-label="暫停 / 繼續">⏸</button>
       </div>
     </div>
 
@@ -251,6 +258,16 @@
       </div>
     </div>
 
+    <!-- Pause -->
+    <div class="overlay" id="pause-overlay">
+      <div class="card">
+        <div class="eyebrow">暫停中</div>
+        <h2 style="color:var(--gold)">已暫停</h2>
+        <p class="desc">戰事已凍結，整理好陣型再繼續。</p>
+        <button class="big-btn" id="resume-btn">繼續遊戲</button>
+      </div>
+    </div>
+
     <!-- Game over -->
     <div class="overlay" id="gameover-overlay">
       <div class="card">
@@ -293,7 +310,8 @@ const CONFIG = {
     restSeconds: 8
   },
   START_COUNTDOWN: 10,
-  START_POINTS: 5
+  START_POINTS: 5,
+  UPGRADE_COST: 5      // 每次建塔／升級消耗的點數
 };
 
 /* ================= Wave function shared by shader + JS ================= */
@@ -304,9 +322,11 @@ function waveComponent(x, z, dirx, dirz, freq, amp, speed, t){
 }
 function oceanHeight(x, z, t){
   let h = 0;
-  h += waveComponent(x, z, 1.0, 0.4, 0.15, 0.6, 1.0, t);
-  h += waveComponent(x, z, -0.3, 1.0, 0.25, 0.4, 1.3, t);
-  h += waveComponent(x, z, 0.7, -0.7, 0.4, 0.25, 0.8, t);
+  // 多個方向交錯的波，避免整片海只朝單一方向流動
+  h += waveComponent(x, z,  1.0,  0.35, 0.16, 0.42, 1.00, t);
+  h += waveComponent(x, z, -0.5,  1.0,  0.20, 0.40, 1.15, t);
+  h += waveComponent(x, z,  0.9, -0.8,  0.28, 0.30, 0.90, t);
+  h += waveComponent(x, z, -0.9, -0.6,  0.40, 0.22, 1.35, t);
   const blockStep = 0.12;
   return Math.round(h / blockStep) * blockStep;
 }
@@ -397,9 +417,10 @@ const oceanMat = new THREE.ShaderMaterial({
     void main(){
       vec3 pos = position;
       float h = 0.0;
-      h += wc(pos.xz, vec2(1.0,0.4), 0.15, 0.6, 1.0, uTime);
-      h += wc(pos.xz, vec2(-0.3,1.0), 0.25, 0.4, 1.3, uTime);
-      h += wc(pos.xz, vec2(0.7,-0.7), 0.4, 0.25, 0.8, uTime);
+      h += wc(pos.xz, vec2( 1.0, 0.35), 0.16, 0.42, 1.00, uTime);
+      h += wc(pos.xz, vec2(-0.5, 1.0 ), 0.20, 0.40, 1.15, uTime);
+      h += wc(pos.xz, vec2( 0.9,-0.8 ), 0.28, 0.30, 0.90, uTime);
+      h += wc(pos.xz, vec2(-0.9,-0.6 ), 0.40, 0.22, 1.35, uTime);
       // 量化成小階梯，做出麥塊般一格一格的水面
       float blockStep = 0.12;
       float hQ = floor(h / blockStep + 0.5) * blockStep;
@@ -760,6 +781,7 @@ const state = {
   currentUpgradeTarget:null,
   modalQueue:0,
   gameOver:false,
+  paused:false,
   totalTowersBuilt:0,
   playTime:0
 };
@@ -844,7 +866,7 @@ function updateHpUi(){
 }
 function updatePointUi(){
   document.getElementById('kill-num').textContent = state.kills;
-  document.getElementById('point-num').textContent = state.pointsSinceMilestone;
+  document.getElementById('point-num').textContent = state.points;
 }
 function updateTowerCountUi(){
   document.getElementById('tower-num').textContent = towers.length;
@@ -872,13 +894,16 @@ function showBottomPanel(which){
   upgradeTargetRow.style.display = which==='target' ? 'block' : 'none';
 }
 function refreshActionButtons(){
-  const has = state.modalQueue > 0;
+  const cost = CONFIG.UPGRADE_COST;
+  const has = state.points >= cost;
   const buildDisabled = !has || towers.length >= CONFIG.MAX_TOWERS;
   btnBuild.disabled = buildDisabled;
   btnBuild.classList.toggle('actionable', !buildDisabled);
   btnUpgrade.disabled = !has;
   btnUpgrade.classList.toggle('actionable', has);
-  creditHint.textContent = has ? ('可用抉擇 ×'+state.modalQueue) : '';
+  creditHint.textContent = has
+    ? ('可建造／升級 '+Math.floor(state.points/cost)+' 次（每次 '+cost+' 點）')
+    : ('再累積 '+(cost-state.points)+' 點即可建造或升級');
 }
 btnBuild.addEventListener('click', ()=>{
   if(btnBuild.disabled) return;
@@ -906,7 +931,10 @@ function openUpgradeTargetRowFor(target){
   const hp = target.isBase ? state.baseHp : target.hp;
   const maxHp = target.isBase ? CONFIG.BASE_MAX_HP : target.maxHp;
   document.getElementById('up-target-name').textContent = target.isBase ? '要塞主砲' : '砲塔';
-  document.getElementById('lv-fr').textContent = 'Lv.'+target.frLv;
+  // 射速已達下限(冷卻封頂) → 顯示 MAX 並停用該選項，避免浪費點數
+  const frCapped = towerCooldown(target) <= CONFIG.UPGRADE.firerateMin + 1e-6;
+  document.getElementById('lv-fr').textContent = frCapped ? 'MAX' : ('Lv.'+target.frLv);
+  document.getElementById('up-firerate').disabled = frCapped;
   document.getElementById('lv-dmg').textContent = 'Lv.'+target.dmgLv;
   document.getElementById('lv-range').textContent = 'Lv.'+target.rangeLv;
   document.getElementById('up-heal').disabled = hp >= maxHp;
@@ -915,7 +943,8 @@ function openUpgradeTargetRowFor(target){
 }
 function finishUpgrade(){
   state.currentUpgradeTarget = null;
-  state.modalQueue--;
+  state.points -= CONFIG.UPGRADE_COST;
+  updatePointUi();
   showBottomPanel('default');
   refreshActionButtons();
 }
@@ -946,6 +975,20 @@ document.getElementById('up-heal').addEventListener('click', ()=>{
   }
   finishUpgrade();
 });
+
+/* ================= Pause ================= */
+const pauseBtn = document.getElementById('pause-btn');
+const pauseOverlay = document.getElementById('pause-overlay');
+function setPaused(p){
+  state.paused = p;
+  pauseBtn.textContent = p ? '▶' : '⏸';
+  pauseOverlay.classList.toggle('show', p);
+}
+pauseBtn.addEventListener('click', ()=>{
+  if(!state.running || state.gameOver) return;
+  setPaused(!state.paused);
+});
+document.getElementById('resume-btn').addEventListener('click', ()=> setPaused(false));
 
 /* ================= Pointer / placement / upgrade target picking ================= */
 const raycaster = new THREE.Raycaster();
@@ -987,7 +1030,8 @@ canvas.addEventListener('click', (e)=>{
     }
     addTower(pt.x, pt.z);
     state.placementMode = false;
-    state.modalQueue--;
+    state.points -= CONFIG.UPGRADE_COST;
+    updatePointUi();
     showBottomPanel('default');
     refreshActionButtons();
     return;
@@ -1003,12 +1047,8 @@ canvas.addEventListener('click', (e)=>{
 
 /* ================= Milestone check ================= */
 function addPoints(n){
+  // 點數改為累積的資源池，不再滿 5 歸零；建塔／升級才會扣除
   state.points += n;
-  state.pointsSinceMilestone += n;
-  while(state.pointsSinceMilestone >= 5){
-    state.pointsSinceMilestone -= 5;
-    state.modalQueue++;
-  }
   updatePointUi();
   refreshActionButtons();
 }
@@ -1168,8 +1208,9 @@ function resetGame(){
     running:true, time:0, baseHp: CONFIG.BASE_MAX_HP, points:0, pointsSinceMilestone:0, kills:0,
     wave:0, waveEnemiesTotal:0, waveEnemiesSpawned:0, spawnTimer:0, spawnInterval:1,
     resting:true, restTimer:CONFIG.START_COUNTDOWN, placementMode:false, upgradeSelectMode:false,
-    currentUpgradeTarget:null, modalQueue:0, gameOver:false, totalTowersBuilt:0, playTime:0
+    currentUpgradeTarget:null, modalQueue:0, gameOver:false, paused:false, totalTowersBuilt:0, playTime:0
   });
+  setPaused(false);
   camera.position.copy(camInitialDir).multiplyScalar(camInitialDist);
   camera.lookAt(0, 0, 0);
   showBottomPanel('default');
@@ -1192,7 +1233,7 @@ let lastT = performance.now();
 function loop(now){
   const dt = Math.min(0.05, (now-lastT)/1000);
   lastT = now;
-  if(state.running && !state.gameOver) update(dt);
+  if(state.running && !state.gameOver && !state.paused) update(dt);
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
