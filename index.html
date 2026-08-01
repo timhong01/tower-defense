@@ -69,12 +69,18 @@
     padding: 4px 10px; display:flex; align-items:center; gap:5px; white-space:nowrap;
   }
   .pill .n{ color:var(--gold); font-size:19px; }
-  #pause-btn{
-    margin-left:auto; pointer-events:auto; width:36px; height:32px; flex:0 0 auto;
-    background: var(--panel); border:1px solid var(--panel-line); border-radius:10px;
-    color: var(--foam); font-size:15px; line-height:1; display:flex; align-items:center; justify-content:center;
+  #side-controls{
+    position:absolute; right:10px; top: calc(max(10px, env(safe-area-inset-top)) + 78px);
+    z-index:22; display:flex; flex-direction:column; gap:6px; align-items:flex-end;
   }
-  #pause-btn:active{ filter:brightness(1.2); }
+  #side-controls button{
+    pointer-events:auto; width:44px; height:36px;
+    background: var(--panel); border:1px solid var(--panel-line); border-radius:10px;
+    color: var(--foam); font-family:'Teko',sans-serif; font-size:15px; letter-spacing:.02em;
+    line-height:1; display:flex; align-items:center; justify-content:center;
+  }
+  #side-controls button:active{ filter:brightness(1.2); }
+  #speed-btn.on{ color: var(--gold); border-color: rgba(255,207,122,0.6); }
 
   #wave-banner{
     position:absolute; top:38%; left:50%; transform:translate(-50%,-50%) scale(.8);
@@ -209,8 +215,12 @@
         <div class="pill">⚔️ <span class="n" id="kill-num">0</span></div>
         <div class="pill">✦ <span class="n" id="point-num">0</span><span style="opacity:.55;font-size:13px">點</span></div>
         <div class="pill">🗼 <span class="n" id="tower-num">0</span></div>
-        <button id="pause-btn" aria-label="暫停 / 繼續">⏸</button>
       </div>
+    </div>
+
+    <div id="side-controls">
+      <button id="pause-btn" aria-label="暫停 / 繼續">⏸</button>
+      <button id="speed-btn" aria-label="加速"><span id="speed-label">1×</span></button>
     </div>
 
     <div id="wave-banner">第 <span id="wave-banner-num">1</span> 波<span class="sub">敵艦逼近</span></div>
@@ -835,6 +845,7 @@ const state = {
   modalQueue:0,
   gameOver:false,
   paused:false,
+  speedMul:1,
   totalTowersBuilt:0,
   playTime:0
 };
@@ -1070,6 +1081,18 @@ pauseBtn.addEventListener('click', ()=>{
   setPaused(!state.paused);
 });
 document.getElementById('resume-btn').addEventListener('click', ()=> setPaused(false));
+
+/* ================= Speed control (測試用：1× / 2× / 3× 循環) ================= */
+const speedBtn = document.getElementById('speed-btn');
+const speedLabel = document.getElementById('speed-label');
+function applySpeed(){
+  speedLabel.textContent = state.speedMul + '×';
+  speedBtn.classList.toggle('on', state.speedMul > 1);
+}
+speedBtn.addEventListener('click', ()=>{
+  state.speedMul = state.speedMul >= 3 ? 1 : state.speedMul + 1;
+  applySpeed();
+});
 
 /* ================= Pointer / placement / upgrade target picking ================= */
 const raycaster = new THREE.Raycaster();
@@ -1329,9 +1352,10 @@ function resetGame(){
     running:true, time:0, baseHp: CONFIG.BASE_MAX_HP, points:0, pointsSinceMilestone:0, kills:0,
     wave:0, waveEnemiesTotal:0, waveEnemiesSpawned:0, spawnTimer:0, spawnInterval:1,
     resting:true, restTimer:CONFIG.START_COUNTDOWN, placementMode:false, upgradeSelectMode:false,
-    currentUpgradeTarget:null, modalQueue:0, gameOver:false, paused:false, totalTowersBuilt:0, playTime:0
+    currentUpgradeTarget:null, modalQueue:0, gameOver:false, paused:false, speedMul:1, totalTowersBuilt:0, playTime:0
   });
   setPaused(false);
+  applySpeed();
   camera.position.copy(camInitialDir).multiplyScalar(camInitialDist);
   camera.lookAt(0, 0, 0);
   showBottomPanel('default');
@@ -1354,7 +1378,9 @@ let lastT = performance.now();
 function loop(now){
   const dt = Math.min(0.05, (now-lastT)/1000);
   lastT = now;
-  if(state.running && !state.gameOver && !state.paused) update(dt);
+  if(state.running && !state.gameOver && !state.paused){
+    for(let s=0; s<state.speedMul; s++) update(dt);
+  }
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
