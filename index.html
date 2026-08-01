@@ -334,8 +334,8 @@ const CONFIG = {
   },
   START_COUNTDOWN: 10,
   START_POINTS: 5,
-  UPGRADE_COST: 5,     // 每次建塔／升級消耗的點數
-  DEMOLISH_REFUND: 3   // 拆除一座砲塔退還的點數（可重新佈署到更好的位置）
+  UPGRADE_COST: 5,        // 每次建塔／升級消耗的點數
+  DEMOLISH_REFUND_DIV: 3  // 拆除退款＝該塔投入點數 ÷ 此值，四捨五入
 };
 
 /* ================= Wave function shared by shader + JS ================= */
@@ -1005,7 +1005,8 @@ function addTower(x, z){
     mesh, x, z,
     hp: CONFIG.TOWER.hp, maxHp: CONFIG.TOWER.hp,
     cooldown: 0,
-    dmgLv: 0, frLv: 0, rangeLv: 0
+    dmgLv: 0, frLv: 0, rangeLv: 0,
+    invested: CONFIG.UPGRADE_COST   // 已投入的點數（建塔成本），升級時累加，供拆除退款
   };
   towers.push(t);
   updateTowerVisual(t);
@@ -1143,7 +1144,7 @@ btnUpgrade.addEventListener('click', ()=>{
 btnDemolish.addEventListener('click', ()=>{
   if(btnDemolish.disabled) return;
   state.demolishMode = true;
-  hintText.textContent = '點擊要拆除的砲塔（退還 '+CONFIG.DEMOLISH_REFUND+' 點）';
+  hintText.textContent = '點擊要拆除的砲塔（退還投入點數的 ⅓）';
   showBottomPanel('hint');
 });
 document.getElementById('cancel-build').addEventListener('click', ()=>{
@@ -1156,66 +1157,85 @@ document.getElementById('upgrade-back').addEventListener('click', ()=>{
   state.currentUpgradeTarget = null;
   showBottomPanel('default');
 });
-function openUpgradeTargetRowFor(target){
-  state.currentUpgradeTarget = target;
-  const hp = target.isBase ? state.baseHp : target.hp;
-  const maxHp = target.isBase ? CONFIG.BASE_MAX_HP : target.maxHp;
-  document.getElementById('up-target-name').textContent = target.isBase ? '要塞主砲' : '砲塔';
-  // 射速已達下限(冷卻封頂) → 顯示 MAX 並停用該選項，避免浪費點數
-  const frCapped = towerCooldown(target) <= CONFIG.UPGRADE.firerateMin + 1e-6;
-  document.getElementById('lv-fr').textContent = frCapped ? 'MAX' : ('Lv.'+target.frLv);
-  document.getElementById('up-firerate').disabled = frCapped;
-  document.getElementById('lv-dmg').textContent = 'Lv.'+target.dmgLv;
-  document.getElementById('lv-range').textContent = 'Lv.'+target.rangeLv;
-  document.getElementById('up-heal').disabled = hp >= maxHp;
+// 更新升級面板顯示（不改變選取目標）；升級後面板保持開啟以便連續升級
+function refreshUpgradeTargetRow(){
+  const t = state.currentUpgradeTarget;
+  if(!t) return;
+  const hp = t.isBase ? state.baseHp : t.hp;
+  const maxHp = t.isBase ? CONFIG.BASE_MAX_HP : t.maxHp;
+  const broke = state.points < CONFIG.UPGRADE_COST;
+  document.getElementById('up-target-name').textContent = t.isBase ? '要塞主砲' : '砲塔';
+  // 射速已達下限(冷卻封頂) → 顯示 MAX 並停用
+  const frCapped = towerCooldown(t) <= CONFIG.UPGRADE.firerateMin + 1e-6;
+  document.getElementById('lv-fr').textContent = frCapped ? 'MAX' : ('Lv.'+t.frLv);
+  document.getElementById('lv-dmg').textContent = 'Lv.'+t.dmgLv;
+  document.getElementById('lv-range').textContent = 'Lv.'+t.rangeLv;
+  document.getElementById('up-firerate').disabled = frCapped || broke;
+  document.getElementById('up-damage').disabled = broke;
+  document.getElementById('up-range').disabled = broke;
+  document.getElementById('up-heal').disabled = (hp >= maxHp) || broke;
   document.getElementById('heal-desc').textContent = '恢復'+CONFIG.UPGRADE.healAmount+'（'+Math.round(hp)+'/'+maxHp+'）';
   // 維修電流：僅要塞可升級，選塔時隱藏
-  document.getElementById('base-only-row').style.display = target.isBase ? 'flex' : 'none';
-  if(target.isBase) document.getElementById('lv-repair').textContent = 'Lv.'+target.repairLv;
+  document.getElementById('base-only-row').style.display = t.isBase ? 'flex' : 'none';
+  document.getElementById('up-repair').disabled = broke;
+  if(t.isBase) document.getElementById('lv-repair').textContent = 'Lv.'+t.repairLv;
+}
+function openUpgradeTargetRowFor(target){
+  state.currentUpgradeTarget = target;
+  refreshUpgradeTargetRow();
   showBottomPanel('target');
 }
-function finishUpgrade(){
-  state.currentUpgradeTarget = null;
+// 對目前選取的目標套用一次升級；成功回傳 true（可連續呼叫以支援長壓）
+function applyUpgrade(kind){
+  const t = state.currentUpgradeTarget;
+  if(!t || state.points < CONFIG.UPGRADE_COST) return false;
+  if(kind==='firerate'){
+    if(towerCooldown(t) <= CONFIG.UPGRADE.firerateMin + 1e-6) return false; // 已 MAX
+    t.frLv++; if(t.isBase) updateBaseVisual(); else updateTowerVisual(t);
+  } else if(kind==='damage'){
+    t.dmgLv++; if(t.isBase) updateBaseVisual(); else updateTowerVisual(t);
+  } else if(kind==='range'){
+    t.rangeLv++; if(t.isBase) baseRing.scale.setScalar(towerRange(t)); else updateTowerVisual(t);
+  } else if(kind==='heal'){
+    const hp = t.isBase ? state.baseHp : t.hp;
+    const maxHp = t.isBase ? CONFIG.BASE_MAX_HP : t.maxHp;
+    if(hp >= maxHp) return false; // 已滿血
+    if(t.isBase){ state.baseHp = Math.min(maxHp, state.baseHp + CONFIG.UPGRADE.healAmount); updateHpUi(); }
+    else { t.hp = Math.min(maxHp, t.hp + CONFIG.UPGRADE.healAmount); updateTowerVisual(t); }
+  } else if(kind==='repair'){
+    if(!t.isBase) return false;
+    t.repairLv++; if(t.repairLv === 1) t.repairTimer = repairCooldown(t);
+  } else return false;
+
   state.points -= CONFIG.UPGRADE_COST;
+  if(!t.isBase) t.invested = (t.invested||0) + CONFIG.UPGRADE_COST; // 記錄投入，供拆除退款計算
   updatePointUi();
-  showBottomPanel('default');
   refreshActionButtons();
+  refreshUpgradeTargetRow();
+  return true;
 }
-document.getElementById('up-firerate').addEventListener('click', ()=>{
-  const t = state.currentUpgradeTarget;
-  if(t){ t.frLv++; if(t.isBase) updateBaseVisual(); else updateTowerVisual(t); }
-  finishUpgrade();
-});
-document.getElementById('up-damage').addEventListener('click', ()=>{
-  const t = state.currentUpgradeTarget;
-  if(t){ t.dmgLv++; if(t.isBase) updateBaseVisual(); else updateTowerVisual(t); }
-  finishUpgrade();
-});
-document.getElementById('up-range').addEventListener('click', ()=>{
-  const t = state.currentUpgradeTarget;
-  if(t){
-    t.rangeLv++;
-    if(t.isBase) baseRing.scale.setScalar(towerRange(t));
-    else updateTowerVisual(t);
-  }
-  finishUpgrade();
-});
-document.getElementById('up-repair').addEventListener('click', ()=>{
-  const t = state.currentUpgradeTarget;
-  if(t && t.isBase){
-    t.repairLv++;
-    if(t.repairLv === 1) t.repairTimer = repairCooldown(t); // 首次升級即啟動維修
-  }
-  finishUpgrade();
-});
-document.getElementById('up-heal').addEventListener('click', ()=>{
-  const t = state.currentUpgradeTarget;
-  if(t){
-    if(t.isBase){ state.baseHp = Math.min(CONFIG.BASE_MAX_HP, state.baseHp + CONFIG.UPGRADE.healAmount); updateHpUi(); }
-    else { t.hp = Math.min(t.maxHp, t.hp + CONFIG.UPGRADE.healAmount); updateTowerVisual(t); }
-  }
-  finishUpgrade();
-});
+// 綁定升級按鈕：單擊升一級，長壓則連續一路升到底（點數用盡或該項封頂為止）
+function bindUpgradeButton(id, kind){
+  const btn = document.getElementById(id);
+  let holdTimer = null, repeatTimer = null;
+  const stop = ()=>{ clearTimeout(holdTimer); clearInterval(repeatTimer); holdTimer = repeatTimer = null; };
+  btn.addEventListener('pointerdown', (ev)=>{
+    ev.preventDefault();
+    if(btn.disabled) return;
+    applyUpgrade(kind); // 立即升一級
+    holdTimer = setTimeout(()=>{
+      repeatTimer = setInterval(()=>{ if(!applyUpgrade(kind)) stop(); }, 110);
+    }, 380);
+  });
+  btn.addEventListener('pointerup', stop);
+  btn.addEventListener('pointerleave', stop);
+  btn.addEventListener('pointercancel', stop);
+}
+bindUpgradeButton('up-firerate', 'firerate');
+bindUpgradeButton('up-damage', 'damage');
+bindUpgradeButton('up-range', 'range');
+bindUpgradeButton('up-heal', 'heal');
+bindUpgradeButton('up-repair', 'repair');
 
 /* ================= Pause ================= */
 const pauseBtn = document.getElementById('pause-btn');
@@ -1306,9 +1326,10 @@ canvas.addEventListener('click', (e)=>{
       scene.remove(target.mesh);
       towers.splice(idx, 1);
       updateTowerCountUi();
-      state.points += CONFIG.DEMOLISH_REFUND;
+      const refund = Math.round((target.invested || CONFIG.UPGRADE_COST) / CONFIG.DEMOLISH_REFUND_DIV); // 投入點數 ÷ 3，四捨五入
+      state.points += refund;
       updatePointUi();
-      showToast('已拆除，退還 '+CONFIG.DEMOLISH_REFUND+' 點');
+      showToast('已拆除，退還 '+refund+' 點');
     }
     state.demolishMode = false;
     showBottomPanel('default');
