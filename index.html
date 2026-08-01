@@ -307,7 +307,8 @@ const CONFIG = {
     baseSpeed: 2.3, speedPerWave: 0.06, speedCap: 4.4,
     attackDamage: 8,      // 打要塞
     meleeDps: 14,         // 撞砲塔
-    meleeRange: 2.6
+    meleeRange: 2.6,
+    turnRate: 1.5         // 每秒最大轉向弧度（越小轉彎越大、船味越重）
   },
   WAVE: {
     baseCount: 5, countPerWave: 2, countCap: 22,
@@ -900,7 +901,14 @@ function spawnEnemy(){
   const mesh = makeEnemyMesh(state.wave);
   mesh.position.set(x, oceanHeight(x,z,state.time), z);
   scene.add(mesh);
-  enemies.push({ mesh, x, z, hp:st.hp, maxHp:st.hp, speed:st.speed, dead:false });
+  // 初始航向大致朝內，但帶點隨機偏移，讓入場路線各自不同、呈弧線
+  const headingToCenter = Math.atan2(-x, -z);
+  mesh.rotation.y = headingToCenter;
+  enemies.push({
+    mesh, x, z, hp:st.hp, maxHp:st.hp, speed:st.speed, dead:false,
+    heading: headingToCenter + (Math.random()-0.5)*1.2,
+    turnRate: CONFIG.ENEMY.turnRate * (0.85 + Math.random()*0.3)
+  });
 }
 
 function startWave(n){
@@ -1179,13 +1187,18 @@ function update(dt){
     }
   }
 
+  // 本幀的共同獵物：血量最少的砲塔；沒有砲塔則衝向要塞(0,0)
+  let prey = null, lowHp = Infinity;
+  for(const t of towers){ if(t.hp < lowHp){ lowHp = t.hp; prey = t; } }
+  const preyX = prey ? prey.x : 0, preyZ = prey ? prey.z : 0;
+
   // enemies move
   for(let i=enemies.length-1;i>=0;i--){
     const e = enemies[i];
     if(e.dead){ enemies.splice(i,1); continue; }
-    const dx = -e.x, dz = -e.z;
-    const dist = Math.hypot(dx,dz);
-    if(dist < CONFIG.BASE_RADIUS){
+
+    // 不論鎖定何處，只要貼近要塞就直接撞擊要塞
+    if(Math.hypot(e.x, e.z) < CONFIG.BASE_RADIUS){
       state.baseHp -= CONFIG.ENEMY.attackDamage;
       spawnExplosion(e.mesh.position, false);
       scene.remove(e.mesh);
@@ -1194,11 +1207,18 @@ function update(dt){
       if(state.baseHp <= 0) triggerGameOver();
       continue;
     }
-    const nx = dx/dist, nz = dz/dist;
+
+    // 像船一樣以最大轉向速率逐漸修正航向，朝獵物畫出弧線，而非瞬間對準走直線
+    const desired = Math.atan2(preyX - e.x, preyZ - e.z);
+    let diff = desired - e.heading;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff)); // 收斂到 [-π, π]
+    const maxStep = e.turnRate*dt;
+    e.heading += Math.max(-maxStep, Math.min(maxStep, diff));
+    const nx = Math.sin(e.heading), nz = Math.cos(e.heading);
     e.x += nx*e.speed*dt;
     e.z += nz*e.speed*dt;
     e.mesh.position.set(e.x, oceanHeight(e.x,e.z,state.time), e.z);
-    e.mesh.rotation.y = Math.atan2(nx, nz);
+    e.mesh.rotation.y = e.heading;
 
     // melee vs towers
     for(let ti=towers.length-1;ti>=0;ti--){
