@@ -463,53 +463,85 @@ const SFX = (function(){
     src.start(t0); src.stop(t0+dur+0.02);
   }
 
-  /* ---- BGM：緩慢小調和弦鋪底 + 低音 + 輕柔琶音，循環播放 ---- */
-  let musicGain = null, musicTimer = null, musicStep = 0;
-  const CHORD_DUR = 3.4;
-  // 每個和弦：[低音, 中音, 上和聲, 上和聲]（Hz），走 Am–F–C–G 的黃昏感進行
-  const PROG = [
-    [110.0, 220.0, 261.6, 329.6], // Am
-    [ 87.3, 174.6, 220.0, 261.6], // F
-    [130.8, 261.6, 329.6, 392.0], // C
-    [ 98.0, 196.0, 246.9, 293.7]  // G
+  /* ---- BGM：有律動感的戰鬥配樂（鼓點 kick + hi-hat + 八分貝斯 + 琶音 + 和弦鋪底），循環 ---- */
+  let musicGain = null, musicTimer = null, musicBar = 0;
+  const BPM = 128;
+  const BEAT = 60 / BPM;   // 一拍
+  const STEP = BEAT / 4;   // 十六分音符
+  const BAR  = BEAT * 4;   // 一小節 (4/4)
+  // 4 小節循環，每小節一個和弦：Am – F – C – G
+  const BARS = [
+    { root:110.0, pad:[220.0,261.6,329.6], arp:[329.6,261.6,220.0,261.6] }, // Am
+    { root: 87.3, pad:[174.6,220.0,261.6], arp:[261.6,220.0,174.6,220.0] }, // F
+    { root:130.8, pad:[196.0,261.6,329.6], arp:[392.0,329.6,261.6,329.6] }, // C
+    { root: 98.0, pad:[196.0,246.9,293.7], arp:[293.7,246.9,196.0,246.9] }  // G
   ];
-  function musicChord(freqs, when, dur){
-    freqs.forEach((f,i)=>{
-      const osc = ctx.createOscillator(), g = ctx.createGain();
-      osc.type = i===0 ? 'sine' : 'triangle';
-      osc.frequency.value = f;
-      osc.detune.value = (Math.random()*8-4); // 微失諧增加溫暖厚度
-      const peak = i===0 ? 0.18 : 0.075;
+  function mNote(f, when, dur, type, peak){
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(peak, when+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, when+dur);
+    o.connect(g); g.connect(musicGain);
+    o.start(when); o.stop(when+dur+0.02);
+  }
+  function mPad(freqs, when, dur){
+    freqs.forEach(f=>{
+      const o=ctx.createOscillator(), g=ctx.createGain(), lp=ctx.createBiquadFilter();
+      o.type='sawtooth'; o.frequency.value=f; o.detune.value=(Math.random()*6-3);
+      lp.type='lowpass'; lp.frequency.value=1300;
       g.gain.setValueAtTime(0.0001, when);
-      g.gain.exponentialRampToValueAtTime(peak, when+dur*0.35);
+      g.gain.exponentialRampToValueAtTime(0.03, when+dur*0.2);
       g.gain.exponentialRampToValueAtTime(0.0001, when+dur);
-      osc.connect(g); g.connect(musicGain);
-      osc.start(when); osc.stop(when+dur+0.05);
+      o.connect(lp); lp.connect(g); g.connect(musicGain);
+      o.start(when); o.stop(when+dur+0.05);
     });
   }
-  function musicPluck(f, when){
-    const osc = ctx.createOscillator(), g = ctx.createGain();
-    osc.type = 'triangle'; osc.frequency.value = f;
+  function mKick(when){
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type='sine';
+    o.frequency.setValueAtTime(125, when);
+    o.frequency.exponentialRampToValueAtTime(45, when+0.11);
     g.gain.setValueAtTime(0.0001, when);
-    g.gain.exponentialRampToValueAtTime(0.05, when+0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, when+0.55);
-    osc.connect(g); g.connect(musicGain);
-    osc.start(when); osc.stop(when+0.6);
+    g.gain.exponentialRampToValueAtTime(0.55, when+0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, when+0.16);
+    o.connect(g); g.connect(musicGain);
+    o.start(when); o.stop(when+0.18);
+  }
+  function mHat(when){
+    if(!noiseBuf) return;
+    const src=ctx.createBufferSource(); src.buffer=noiseBuf;
+    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=7000;
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(0.10, when);
+    g.gain.exponentialRampToValueAtTime(0.0001, when+0.045);
+    src.connect(hp); hp.connect(g); g.connect(musicGain);
+    src.start(when); src.stop(when+0.06);
   }
   function musicTick(){
-    if(!ctx || muted) { musicStep++; return; } // 靜音時不排程，省 CPU
-    const chord = PROG[musicStep % PROG.length];
-    const now = ctx.currentTime + 0.05;
-    musicChord(chord, now, CHORD_DUR);
-    for(let b=0;b<4;b++) musicPluck(chord[2 + (b%2)], now + b*(CHORD_DUR/4) + 0.15);
-    musicStep++;
+    if(!ctx || muted){ musicBar++; return; } // 靜音時不排程，省 CPU
+    const bar = BARS[musicBar % BARS.length];
+    const t0 = ctx.currentTime + 0.06;
+    mPad(bar.pad, t0, BAR);                         // 和弦鋪底
+    for(let s=0; s<16; s++){
+      const w = t0 + s*STEP;
+      if(s % 4 === 0) mKick(w);                     // 每拍踩點
+      if(s % 4 === 2) mHat(w);                      // 反拍 hi-hat
+      if(s % 2 === 0) mNote(bar.root, w, 0.18, 'triangle', 0.16);            // 八分音符貝斯
+      if(s % 4 === 0) mNote(bar.arp[(s/4)|0], w+STEP*0.5, 0.16, 'square', 0.05); // 琶音
+    }
+    musicBar++;
   }
   function startMusic(){
     ensure();
     if(!ctx || musicTimer) return;
-    if(!musicGain){ musicGain = ctx.createGain(); musicGain.gain.value = 0.6; musicGain.connect(master); }
-    musicStep = 0; musicTick();
-    musicTimer = setInterval(musicTick, CHORD_DUR*1000);
+    if(!musicGain){ musicGain = ctx.createGain(); musicGain.gain.value = 0.45; musicGain.connect(master); }
+    if(!noiseBuf){ // hi-hat 需要噪音緩衝
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate*0.5, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+    }
+    musicBar = 0; musicTick();
+    musicTimer = setInterval(musicTick, BAR*1000);
   }
   function stopMusic(){ if(musicTimer){ clearInterval(musicTimer); musicTimer = null; } }
 
