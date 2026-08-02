@@ -82,13 +82,17 @@
 
   #wave-banner{
     position:absolute; top:38%; left:50%; transform:translate(-50%,-50%) scale(.8);
-    font-family:'Teko',sans-serif; font-weight:700; font-size:54px; letter-spacing:.08em;
+    font-family:'Teko',sans-serif; font-weight:700; font-size:clamp(44px, 13vw, 72px); letter-spacing:.06em;
     color: var(--gold); text-shadow: 0 0 24px rgba(255,207,122,0.55), 0 2px 0 rgba(0,0,0,0.4);
     opacity:0; pointer-events:none; z-index: 25; transition: opacity .5s ease, transform .5s ease;
-    text-align:center;
+    text-align:center; width:92%; line-height:1.02;
   }
-  #wave-banner .sub{ display:block; font-size:16px; color:var(--foam); opacity:.8; letter-spacing:.2em; margin-top:2px; }
+  #wave-banner .sub{ display:block; font-size:clamp(15px,4.5vw,22px); color:var(--foam); opacity:.85; letter-spacing:.18em; margin-top:4px; font-weight:600; }
   #wave-banner.show{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+  /* 敵艦升級波：主字改熾熱橘紅並加脈動 */
+  #wave-banner.upgraded{ color: var(--ember); text-shadow: 0 0 28px rgba(255,123,84,0.65), 0 2px 0 rgba(0,0,0,0.45); }
+  #wave-banner.upgraded.show{ animation: bannerPulse .5s ease-in-out 2; }
+  @keyframes bannerPulse{ 0%,100%{ transform:translate(-50%,-50%) scale(1); } 50%{ transform:translate(-50%,-50%) scale(1.08); } }
 
   #countdown-chip{
     position:absolute; top:64px; left:50%; transform:translateX(-50%);
@@ -346,6 +350,7 @@ const I18N = {
   hpLabel:          { en:"Fortress Shield", zh:"要塞護盾" },
   waveBanner:       { en:"Wave {n}", zh:"第 {n} 波" },
   waveSub:          { en:"Enemies incoming", zh:"敵艦逼近" },
+  waveUpgraded:     { en:"ENEMIES UPGRADED!", zh:"敵艦升級！" },
   countdown:        { en:"Next wave in {n}s", zh:"下一波倒數 {n} 秒" },
   btnBuild:         { en:"Build", zh:"建塔" },
   btnUpgrade:       { en:"Upgrade", zh:"升級" },
@@ -1281,12 +1286,24 @@ function startWave(n){
   state.spawnTimer = 0;
   state.resting = false;
   document.getElementById('wave-num').textContent = n;
-  document.getElementById('wave-banner-main').textContent = TR('waveBanner', {n});
-  document.getElementById('wave-banner-sub').textContent = TR('waveSub');
   const banner = document.getElementById('wave-banner');
+  const bMain = document.getElementById('wave-banner-main');
+  const bSub  = document.getElementById('wave-banner-sub');
+  banner.classList.remove('upgraded');
+  if(n === 1){
+    bMain.textContent = TR('waveBanner', {n});   // 第 1 波
+    bSub.textContent  = TR('waveSub');           // 敵艦逼近
+  } else {
+    // 敵人每波都會升級 → 巨大橫幅強調「敵艦升級！」
+    bMain.textContent = TR('waveUpgraded');
+    bSub.textContent  = TR('waveBanner', {n});   // 第 N 波
+    banner.classList.add('upgraded');
+  }
+  banner.classList.remove('show');
+  void banner.offsetWidth;                        // 強制重排，讓脈動動畫每波重播
   banner.classList.add('show');
   SFX.wave();
-  setTimeout(()=>banner.classList.remove('show'), 1400);
+  setTimeout(()=>banner.classList.remove('show'), 1600);
   document.getElementById('countdown-chip').classList.remove('show');
 }
 
