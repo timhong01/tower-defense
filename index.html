@@ -219,6 +219,7 @@
     <div id="side-controls">
       <button id="pause-btn" aria-label="暫停 / 繼續">⏸</button>
       <button id="speed-btn" aria-label="加速"><span id="speed-label">1×</span></button>
+      <button id="mute-btn" aria-label="靜音">🔊</button>
       <button id="fs-btn" aria-label="全螢幕">⛶</button>
     </div>
 
@@ -336,6 +337,73 @@ const CONFIG = {
   UPGRADE_COST: 5,        // 每次建塔／升級消耗的點數
   DEMOLISH_REFUND_DIV: 3  // 拆除退款＝該塔投入點數 ÷ 此值，四捨五入
 };
+
+/* ================= SFX（Web Audio 程序化合成，無音檔、離線可用） ================= */
+const SFX = (function(){
+  let ctx = null, master = null, muted = false, noiseBuf = null;
+  const last = {};
+  function ensure(){
+    if(ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    ctx = new AC();
+    master = ctx.createGain();
+    master.gain.value = 0.5;
+    master.connect(ctx.destination);
+  }
+  function resume(){ ensure(); if(ctx && ctx.state==='suspended') ctx.resume(); }
+  function setMuted(m){ muted = m; if(master) master.gain.value = m ? 0 : 0.5; }
+  function throttled(key, ms){ const n = performance.now(); if(last[key] && n-last[key] < ms) return false; last[key] = n; return true; }
+  // 單一音：freq→slideTo 的滑音，短促包絡
+  function tone(freq, dur, type, gain, slideTo, delay){
+    if(!ctx || muted) return;
+    const t0 = ctx.currentTime + (delay||0);
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = type || 'square';
+    osc.frequency.setValueAtTime(freq, t0);
+    if(slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(1, slideTo), t0+dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain || 0.3, t0+0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    osc.connect(g); g.connect(master);
+    osc.start(t0); osc.stop(t0+dur+0.02);
+  }
+  // 白噪爆裂（爆炸、撞擊）
+  function noise(dur, gain, from, to){
+    if(!ctx || muted) return;
+    if(!noiseBuf){
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate*0.5, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+    }
+    const t0 = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+    const lp = ctx.createBiquadFilter(); lp.type='lowpass';
+    lp.frequency.setValueAtTime(from||1400, t0);
+    lp.frequency.exponentialRampToValueAtTime(to||200, t0+dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain||0.4, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    src.connect(lp); lp.connect(g); g.connect(master);
+    src.start(t0); src.stop(t0+dur+0.02);
+  }
+  return {
+    resume, setMuted, isMuted: ()=>muted,
+    shoot(){ if(throttled('shoot',55)) tone(770, 0.07, 'square', 0.10, 430); },
+    gunner(){ if(throttled('gunner',80)) tone(210, 0.12, 'sawtooth', 0.12, 95); },
+    kill(){ if(throttled('kill',40)) noise(0.22, 0.32, 1500, 220); },
+    towerLost(){ noise(0.45, 0.5, 1900, 160); tone(120, 0.3, 'sawtooth', 0.18, 50); },
+    baseHit(){ tone(150, 0.18, 'square', 0.28, 60); noise(0.18, 0.22, 700, 180); },
+    build(){ tone(440, 0.09, 'triangle', 0.22); tone(660, 0.12, 'triangle', 0.22, null, 0.09); },
+    upgrade(){ if(throttled('up',55)) tone(600, 0.08, 'square', 0.18, 920); },
+    demolish(){ tone(520, 0.14, 'sawtooth', 0.22, 150); },
+    wave(){ tone(330,0.14,'sawtooth',0.26); tone(440,0.16,'sawtooth',0.26,null,0.13); tone(550,0.3,'sawtooth',0.26,null,0.28); },
+    zap(){ if(throttled('zap',60)) tone(1250, 0.1, 'square', 0.10, 320); },
+    heal(){ if(throttled('heal',80)) tone(520, 0.16, 'sine', 0.12, 800); },
+    gameover(){ tone(400,0.5,'sawtooth',0.3,120); tone(300,0.6,'sawtooth',0.3,90,0.22); tone(200,0.8,'sawtooth',0.3,70,0.5); },
+    click(){ tone(320, 0.04, 'square', 0.10); }
+  };
+})();
 
 /* ================= Wave function shared by shader + JS ================= */
 function waveComponent(x, z, dirx, dirz, freq, amp, speed, t){
@@ -874,6 +942,7 @@ function spawnHealPulse(pos){
   m.position.copy(pos); m.position.y += 0.25;
   scene.add(m);
   healPulses.push({ mesh:m, life:0, maxLife:0.5 });
+  SFX.heal();
 }
 function updateHealPulses(dt){
   for(let i=healPulses.length-1;i>=0;i--){
@@ -909,6 +978,7 @@ function spawnLightning(from, to){
   scene.add(line);
   lightnings.push({ line, life:0, maxLife:0.24 });
   spawnMuzzleFlash(to); // 命中處補血火花
+  SFX.zap();
 }
 function updateLightnings(dt){
   for(let i=lightnings.length-1;i>=0;i--){
@@ -1054,6 +1124,7 @@ function startWave(n){
   document.getElementById('wave-banner-num').textContent = n;
   const banner = document.getElementById('wave-banner');
   banner.classList.add('show');
+  SFX.wave();
   setTimeout(()=>banner.classList.remove('show'), 1400);
   document.getElementById('countdown-chip').classList.remove('show');
 }
@@ -1111,18 +1182,21 @@ function refreshActionButtons(){
 }
 btnBuild.addEventListener('click', ()=>{
   if(btnBuild.disabled) return;
+  SFX.click();
   state.placementMode = true;
   hintText.textContent = '點擊海面放置新塔';
   showBottomPanel('hint');
 });
 btnUpgrade.addEventListener('click', ()=>{
   if(btnUpgrade.disabled) return;
+  SFX.click();
   state.upgradeSelectMode = true;
   hintText.textContent = '點擊要升級的砲塔（或要塞）';
   showBottomPanel('hint');
 });
 btnDemolish.addEventListener('click', ()=>{
   if(btnDemolish.disabled) return;
+  SFX.click();
   state.demolishMode = true;
   hintText.textContent = '點擊要拆除的砲塔（退還投入點數的 ⅓）';
   showBottomPanel('hint');
@@ -1185,6 +1259,7 @@ function applyUpgrade(kind){
 
   state.points -= CONFIG.UPGRADE_COST;
   if(!t.isBase) t.invested = (t.invested||0) + CONFIG.UPGRADE_COST; // 記錄投入，供拆除退款計算
+  SFX.upgrade();
   updatePointUi();
   refreshActionButtons();
   refreshUpgradeTargetRow();
@@ -1237,6 +1312,22 @@ function applySpeed(){
 speedBtn.addEventListener('click', ()=>{
   state.speedMul = state.speedMul >= 3 ? 1 : state.speedMul + 1;
   applySpeed();
+});
+
+/* ================= Mute 靜音切換（記憶偏好） ================= */
+const muteBtn = document.getElementById('mute-btn');
+let savedMute = false;
+try { savedMute = localStorage.getItem('ntd_muted') === '1'; } catch(e){}
+SFX.setMuted(savedMute);
+muteBtn.textContent = savedMute ? '🔇' : '🔊';
+muteBtn.classList.toggle('on', !savedMute);
+muteBtn.addEventListener('click', ()=>{
+  SFX.resume();
+  const m = !SFX.isMuted();
+  SFX.setMuted(m);
+  muteBtn.textContent = m ? '🔇' : '🔊';
+  muteBtn.classList.toggle('on', !m);
+  try { localStorage.setItem('ntd_muted', m ? '1' : '0'); } catch(e){}
 });
 
 /* ================= Fullscreen 全螢幕（隱藏瀏覽器網址列） ================= */
@@ -1295,6 +1386,7 @@ canvas.addEventListener('click', (e)=>{
       if(Math.hypot(pt.x-t.x, pt.z-t.z) < 3.2){ showToast('離其他砲塔太近，換個地方吧'); return; }
     }
     addTower(pt.x, pt.z);
+    SFX.build();
     state.placementMode = false;
     state.points -= CONFIG.UPGRADE_COST;
     updatePointUi();
@@ -1328,6 +1420,7 @@ canvas.addEventListener('click', (e)=>{
       updateTowerCountUi();
       const refund = Math.round((target.invested || CONFIG.UPGRADE_COST) / CONFIG.DEMOLISH_REFUND_DIV); // 投入點數 ÷ 3，四捨五入
       state.points += refund;
+      SFX.demolish();
       updatePointUi();
       showToast('已拆除，退還 '+refund+' 點');
     }
@@ -1354,6 +1447,7 @@ function killEnemy(enemy){
   if(enemy.dead) return;
   enemy.dead = true;
   spawnExplosion(enemy.mesh.position, false);
+  SFX.kill();
   scene.remove(enemy.mesh);
   state.kills++;
   addPoints(1);
@@ -1413,6 +1507,7 @@ function update(dt){
     if(e.type==='ram' && Math.hypot(e.x, e.z) < CONFIG.BASE_RADIUS){
       state.baseHp -= CONFIG.ENEMY.attackDamage;
       spawnExplosion(e.mesh.position, false);
+      SFX.baseHit();
       scene.remove(e.mesh);
       enemies.splice(i,1);
       updateHpUi();
@@ -1467,6 +1562,7 @@ function update(dt){
           t.hp -= CONFIG.ENEMY.meleeDps*dt;
           if(t.hp <= 0){
             spawnExplosion(t.mesh.position, true);
+            SFX.towerLost();
             scene.remove(t.mesh);
             towers.splice(ti,1);
             updateTowerCountUi();
@@ -1489,13 +1585,14 @@ function update(dt){
           const to = tgt ? (()=>{ const p = tgt.mesh.position.clone(); p.y += 1.2; return p; })() : new THREE.Vector3(0, 3, 0);
           const tRef = tgt;
           spawnMuzzleFlash(from);
+          SFX.gunner();
           spawnEnemyBullet(from, to, ()=>{
-            if(!tRef){ state.baseHp -= dmg; updateHpUi(); spawnExplosion(to, false); if(state.baseHp<=0) triggerGameOver(); return; }
+            if(!tRef){ state.baseHp -= dmg; updateHpUi(); spawnExplosion(to, false); SFX.baseHit(); if(state.baseHp<=0) triggerGameOver(); return; }
             const idx = towers.indexOf(tRef);
             if(idx < 0) return; // 塔已不在
             tRef.hp -= dmg;
             spawnExplosion(to, false);
-            if(tRef.hp <= 0){ spawnExplosion(tRef.mesh.position, true); scene.remove(tRef.mesh); towers.splice(idx,1); updateTowerCountUi(); }
+            if(tRef.hp <= 0){ spawnExplosion(tRef.mesh.position, true); SFX.towerLost(); scene.remove(tRef.mesh); towers.splice(idx,1); updateTowerCountUi(); }
             else updateTowerVisual(tRef);
           });
         } else {
@@ -1547,6 +1644,7 @@ function update(dt){
       const to = nearest.mesh.position.clone(); to.y += 0.3;
       const targetRef = nearest;
       spawnMuzzleFlash(from);
+      SFX.shoot();
       spawnBullet(from, to, dmg, ()=>{
         if(targetRef.dead) return;
         spawnExplosion(to, false);
@@ -1591,6 +1689,7 @@ function update(dt){
 function triggerGameOver(){
   state.gameOver = true;
   state.running = false;
+  SFX.gameover();
   document.getElementById('go-wave').textContent = state.wave;
   document.getElementById('go-kills').textContent = state.kills;
   document.getElementById('go-towers').textContent = state.totalTowersBuilt;
@@ -1633,10 +1732,12 @@ function resetGame(){
 }
 
 document.getElementById('start-btn').addEventListener('click', ()=>{
+  SFX.resume();  // 使用者手勢：解鎖音訊
   document.getElementById('start-overlay').classList.remove('show');
   resetGame();
 });
 document.getElementById('restart-btn').addEventListener('click', ()=>{
+  SFX.resume();
   resetGame();
 });
 
