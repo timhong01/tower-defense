@@ -1469,11 +1469,15 @@ const fsBtn = document.getElementById('fs-btn');
 fsBtn.addEventListener('click', ()=>{
   const doc = document, el = doc.documentElement;
   const isFs = doc.fullscreenElement || doc.webkitFullscreenElement;
-  if(!isFs){
-    (el.requestFullscreen || el.webkitRequestFullscreen || (()=>{})).call(el);
-  } else {
-    (doc.exitFullscreen || doc.webkitExitFullscreen || (()=>{})).call(doc);
-  }
+  try {
+    if(!isFs){
+      // iframe 內若未被授權 fullscreen，requestFullscreen 會回傳被 reject 的 promise，需吞掉避免 console 報錯
+      const p = (el.requestFullscreen || el.webkitRequestFullscreen || (()=>{})).call(el);
+      if(p && p.catch) p.catch(()=>{});
+    } else {
+      (doc.exitFullscreen || doc.webkitExitFullscreen || (()=>{})).call(doc);
+    }
+  } catch(e){ /* 全螢幕不被允許時安靜略過 */ }
   setTimeout(resize, 200); // 進出全螢幕後尺寸會變，重算畫布
 });
 document.addEventListener('fullscreenchange', ()=>{
