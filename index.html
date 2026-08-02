@@ -152,6 +152,9 @@
     opacity:0; pointer-events:none; transition: opacity .25s ease;
   }
   .overlay.show{ opacity:1; pointer-events:auto; }
+  /* 暫停視窗刻意做成半透明，看得見底下暫停的戰場 */
+  #pause-overlay{ background: rgba(3,10,14,0.32); backdrop-filter: blur(1px); }
+  #pause-overlay .card{ background: rgba(10,24,30,0.55); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
   .card{
     width: min(88%, 340px);
     background: linear-gradient(180deg, rgba(14,32,40,0.96), rgba(8,20,26,0.98));
@@ -277,7 +280,6 @@
       <div class="card">
         <div class="eyebrow" data-i18n="pauseEyebrow">暫停中</div>
         <h2 style="color:var(--gold)" data-i18n="pauseTitle">已暫停</h2>
-        <p class="desc" data-i18n="pauseDesc">戰事已凍結，整理好陣型再繼續。</p>
         <button class="big-btn" id="resume-btn" data-i18n="resumeBtn">繼續遊戲</button>
       </div>
     </div>
