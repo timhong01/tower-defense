@@ -107,6 +107,7 @@
   #boss-banner.show{ opacity:1; transform: translateY(0) scaleX(1); }
   #boss-banner.gunship{ --clr:#ff7b3a; --glow:rgba(255,123,58,0.55); }
   #boss-banner.healer{ --clr:#35ffa0; --glow:rgba(53,255,160,0.55); }
+  #boss-banner.carrier{ --clr:#7aa8ff; --glow:rgba(120,170,255,0.55); }
   #boss-banner .bb-eyebrow{ font-family:'Teko',sans-serif; letter-spacing:.34em; font-size:15px; color:var(--clr); text-transform:uppercase; }
   #boss-banner .bb-name{ font-family:'Teko',sans-serif; font-weight:700; font-size:clamp(40px,12vw,64px); color:#fff; line-height:1; text-shadow:0 0 26px var(--glow); }
   #boss-banner .bb-desc{ font-size:13.5px; color:var(--foam); opacity:.85; margin-top:5px; letter-spacing:.02em; }
@@ -358,14 +359,17 @@ const CONFIG = {
     // 砲擊艦：站遠處遠程轟擊砲塔／要塞，不撞塔
     gunner: { hpMult:1.7, speedMult:0.7, standoff:8, fireRange:9.5, cooldown:2.2, damage:11, bulletSpeed:24 },
     // 補血艦：不攻擊，待在要塞射程外的支援圈，治療經過的友軍（standoff＞塔射程避免送死）
-    healer: { hpMult:1.35, speedMult:0.85, healRadius:5.5, healCooldown:2.6, healFrac:0.13, standoff:14 }
+    healer: { hpMult:1.35, speedMult:0.85, healRadius:5.5, healCooldown:2.6, healFrac:0.13, standoff:14 },
+    // 航母：超大、極慢、待在遠方支援圈定時放出最弱小船；主力艦隊清空後才逼不得已推進
+    carrier: { hpMult:5.0, speedMult:0.32, standoff:16, spawnCooldown:3.2, spawnWave:1, ramDamage:12 }
   },
   WAVE: {
     baseCount: 5, countPerWave: 2, countCap: 22,
     spawnIntervalBase: 1.05, spawnIntervalPerWave: 0.035, spawnIntervalMin: 0.38,
     restSeconds: 8,
     gunnerFromWave: 8, gunnerCap: 6,    // 砲擊艦自第8波起混入，上限6
-    healerFromWave: 12, healerCap: 3    // 補血艦自第12波起混入，上限3
+    healerFromWave: 12, healerCap: 3,   // 補血艦自第12波起混入，上限3
+    carrierFromWave: 16, carrierCap: 1  // 航母自第16波起登場，每波至多1艘
   },
   START_COUNTDOWN: 10,
   START_POINTS: 5,
@@ -386,6 +390,8 @@ const I18N = {
   bossGunnerDesc:   { en:"Bombards your towers from range", zh:"遠程轟擊你的砲塔" },
   bossHealerName:   { en:"HEALER FLEET", zh:"補血艦" },
   bossHealerDesc:   { en:"Heals nearby enemy ships", zh:"治療周圍的敵艦" },
+  bossCarrierName:  { en:"MOTHERSHIP", zh:"母船" },
+  bossCarrierDesc:  { en:"Hangs back and births small ships from its hull", zh:"待在遠方，從船腹孵出小船" },
   countdown:        { en:"Next wave in {n}s", zh:"下一波倒數 {n} 秒" },
   btnBuild:         { en:"Build", zh:"建塔" },
   btnUpgrade:       { en:"Upgrade", zh:"升級" },
@@ -824,6 +830,15 @@ const HEALER_MAT = {
   glow: new THREE.MeshStandardMaterial({ color:0x8dffcf, emissive:0x35ffa0, emissiveIntensity:0.95, roughness:0.4 }),
   sail: new THREE.MeshStandardMaterial({ color:0x2fbf8f, roughness:0.6, emissive:0x0d3b2c, side:THREE.DoubleSide })
 };
+// 母船（母子船）：深色巨艦，中央船塢會孵出紅色小船
+const CARRIER_MAT = {
+  hull:  new THREE.MeshStandardMaterial({ color:0x33283a, roughness:0.82 }),           // 深紫灰艦體
+  wall:  new THREE.MeshStandardMaterial({ color:0x271d2e, roughness:0.8 }),             // 兩側高牆
+  bay:   new THREE.MeshStandardMaterial({ color:0x0d0712, roughness:0.95 }),            // 船塢深色開口
+  mini:  new THREE.MeshStandardMaterial({ color:0x8b1e1e, roughness:0.7, emissive:0x220000 }), // 塢內小船
+  glow:  new THREE.MeshStandardMaterial({ color:0xff7b3a, emissive:0xff5a1e, emissiveIntensity:0.7, roughness:0.5 }), // 船塢暖光
+  island:new THREE.MeshStandardMaterial({ color:0x241a2b, roughness:0.7, metalness:0.3 })
+};
 
 const hitProxyGeo = new THREE.CylinderGeometry(2.0, 2.0, 4.2, 8);
 const hitProxyMat = new THREE.MeshBasicMaterial({ transparent:true, opacity:0, depthWrite:false, depthTest:false });
@@ -1045,9 +1060,47 @@ function makeHealerMesh(wave){
   return g;
 }
 
+/* 母船（母子船）：開頂船塢設計，中央敞開露出發光孵化口與紅色小船，移動極慢 */
+function makeCarrierMesh(){
+  const g = new THREE.Group();
+  const L = 4.0;
+  // 船塢底板
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.3, L), CARRIER_MAT.hull);
+  floor.position.y = 0.2; g.add(floor);
+  // 中央船塢深色開口（肚子）
+  const bay = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.22, L*0.62), CARRIER_MAT.bay);
+  bay.position.y = 0.42; g.add(bay);
+  // 孵化口暖光
+  const glow = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.02, L*0.6), CARRIER_MAT.glow);
+  glow.position.y = 0.34; g.add(glow);
+  // 塢內待命的小船（露出艦體，象徵即將孵出）
+  for(const pz of [-0.55, 0.55]){
+    const mini = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.0, 4), CARRIER_MAT.mini);
+    mini.rotation.x = Math.PI/2; mini.rotation.y = Math.PI/4;
+    mini.position.set(0, 0.5, pz); g.add(mini);
+  }
+  // 兩側船舷高牆（夾住船塢，讓中央保持敞開）
+  for(const sx of [-0.82, 0.82]){
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.55, L), CARRIER_MAT.wall);
+    wall.position.set(sx, 0.5, 0); g.add(wall);
+  }
+  // 艦艏尖鏵
+  const prow = new THREE.Mesh(new THREE.ConeGeometry(1.0, 1.5, 4), CARRIER_MAT.hull);
+  prow.rotation.x = Math.PI/2; prow.rotation.y = Math.PI/4;
+  prow.position.set(0, 0.35, L/2 + 0.3); prow.scale.set(1, 0.5, 1); g.add(prow);
+  // 艦艉指揮塔 + 天線
+  const island = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.6, 0.72), CARRIER_MAT.island);
+  island.position.set(0, 0.62, -L/2 + 0.05); g.add(island);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.7,5), CARRIER_MAT.island);
+  mast.position.set(0, 1.15, -L/2 + 0.05); g.add(mast);
+  g.scale.setScalar(1.05);
+  return g;
+}
+
 function makeEnemyMesh(wave, type){
   if(type==='gunner') return makeGunnerMesh(wave);
   if(type==='healer') return makeHealerMesh(wave);
+  if(type==='carrier') return makeCarrierMesh();
   return makeRamMesh(wave);
 }
 
@@ -1269,7 +1322,28 @@ function enemyStatsForWave(w, type){
   const spd = Math.min(CONFIG.ENEMY.speedCap, CONFIG.ENEMY.baseSpeed + w*CONFIG.ENEMY.speedPerWave);
   if(type==='gunner') return { hp: hp*CONFIG.ENEMY.gunner.hpMult, speed: spd*CONFIG.ENEMY.gunner.speedMult };
   if(type==='healer') return { hp: hp*CONFIG.ENEMY.healer.hpMult, speed: spd*CONFIG.ENEMY.healer.speedMult };
+  if(type==='carrier') return { hp: hp*CONFIG.ENEMY.carrier.hpMult, speed: spd*CONFIG.ENEMY.carrier.speedMult };
   return { hp, speed: spd };
+}
+// 建立一艘敵艦並加入場上（供正常生成與母船孵化共用）
+function addEnemy(x, z, type, statsWave, fromCarrier){
+  const st = enemyStatsForWave(statsWave, type);
+  const mesh = makeEnemyMesh(statsWave, type);
+  mesh.position.set(x, oceanHeight(x,z,state.time), z);
+  scene.add(mesh);
+  const headingToCenter = Math.atan2(-x, -z);
+  mesh.rotation.y = headingToCenter;
+  enemies.push({
+    mesh, x, z, hp:st.hp, maxHp:st.hp, speed:st.speed, dead:false, type,
+    fromCarrier: !!fromCarrier,
+    heading: headingToCenter + (Math.random()-0.5)*1.2,
+    turnRate: CONFIG.ENEMY.turnRate * (0.85 + Math.random()*0.3),
+    fireTimer: Math.random()*CONFIG.ENEMY.gunner.cooldown,
+    healTimer: Math.random()*CONFIG.ENEMY.healer.healCooldown,
+    orbitDir: Math.random()<0.5 ? 1 : -1,
+    orbitTimer: 2.5 + Math.random()*3,
+    spawnTimer: CONFIG.ENEMY.carrier.spawnCooldown   // 母船用：孵化倒數
+  });
 }
 function spawnEnemy(){
   const angle = Math.random()*Math.PI*2;
@@ -1282,22 +1356,7 @@ function spawnEnemy(){
   const r = Math.min(rx, rz) + 3;   // 落在畫面外緣約 3 單位處
   const x = dirx*r, z = dirz*r;
   const type = state.spawnQueue.length ? state.spawnQueue.pop() : 'ram';
-  const st = enemyStatsForWave(state.wave, type);
-  const mesh = makeEnemyMesh(state.wave, type);
-  mesh.position.set(x, oceanHeight(x,z,state.time), z);
-  scene.add(mesh);
-  // 初始航向大致朝內，但帶點隨機偏移，讓入場路線各自不同、呈弧線
-  const headingToCenter = Math.atan2(-x, -z);
-  mesh.rotation.y = headingToCenter;
-  enemies.push({
-    mesh, x, z, hp:st.hp, maxHp:st.hp, speed:st.speed, dead:false, type,
-    heading: headingToCenter + (Math.random()-0.5)*1.2,
-    turnRate: CONFIG.ENEMY.turnRate * (0.85 + Math.random()*0.3),
-    fireTimer: Math.random()*CONFIG.ENEMY.gunner.cooldown,
-    healTimer: Math.random()*CONFIG.ENEMY.healer.healCooldown,
-    orbitDir: Math.random()<0.5 ? 1 : -1,        // 砲擊艦繞行方向
-    orbitTimer: 2.5 + Math.random()*3            // 每隔一陣子換向，遊走更自然
-  });
+  addEnemy(x, z, type, state.wave, false);
 }
 
 function startWave(n){
@@ -1309,9 +1368,12 @@ function startWave(n){
     const total = state.waveEnemiesTotal;
     let g = n>=CONFIG.WAVE.gunnerFromWave ? Math.min(CONFIG.WAVE.gunnerCap, 1+Math.floor((n-CONFIG.WAVE.gunnerFromWave)/2)) : 0;
     let h = n>=CONFIG.WAVE.healerFromWave ? Math.min(CONFIG.WAVE.healerCap, 1+Math.floor((n-CONFIG.WAVE.healerFromWave)/3)) : 0;
-    g = Math.min(g, Math.max(0, total-2));
-    h = Math.min(h, Math.max(0, total-2-g));
+    let c = n>=CONFIG.WAVE.carrierFromWave ? Math.min(CONFIG.WAVE.carrierCap, 1+Math.floor((n-CONFIG.WAVE.carrierFromWave)/6)) : 0;
+    c = Math.min(c, Math.max(0, total-3));
+    g = Math.min(g, Math.max(0, total-2-c));
+    h = Math.min(h, Math.max(0, total-2-c-g));
     const q = [];
+    for(let i=0;i<c;i++) q.push('carrier');
     for(let i=0;i<g;i++) q.push('gunner');
     for(let i=0;i<h;i++) q.push('healer');
     while(q.length < total) q.push('ram');
@@ -1325,7 +1387,8 @@ function startWave(n){
   document.getElementById('countdown-chip').classList.remove('show');
 
   // 特殊艦首次登場的波次 → 改用 Boss 風格橫幅（取代一般升級橫幅）
-  const introType = (n === CONFIG.WAVE.healerFromWave) ? 'healer'
+  const introType = (n === CONFIG.WAVE.carrierFromWave) ? 'carrier'
+                  : (n === CONFIG.WAVE.healerFromWave) ? 'healer'
                   : (n === CONFIG.WAVE.gunnerFromWave) ? 'gunner' : null;
   if(introType){ showBossBanner(introType); return; }
 
@@ -1348,17 +1411,23 @@ function startWave(n){
   SFX.wave();
   setTimeout(()=>banner.classList.remove('show'), 1600);
 }
+const BOSS_INFO = {
+  gunner:  { cls:'gunship', icon:'🔫',  name:'bossGunnerName',  desc:'bossGunnerDesc',  fc:'rgba(255,123,58,0.5)' },
+  healer:  { cls:'healer',  icon:'💚',  name:'bossHealerName',  desc:'bossHealerDesc',  fc:'rgba(53,255,160,0.5)' },
+  carrier: { cls:'carrier', icon:'🛳️', name:'bossCarrierName', desc:'bossCarrierDesc', fc:'rgba(120,170,255,0.5)' }
+};
 function showBossBanner(type){
+  const info = BOSS_INFO[type];
+  if(!info) return;
   const bb = document.getElementById('boss-banner');
-  const isG = type === 'gunner';
-  bb.className = ''; bb.classList.add(isG ? 'gunship' : 'healer');
+  bb.className = ''; bb.classList.add(info.cls);
   document.getElementById('bb-eyebrow').textContent = TR('bossNew');
-  document.getElementById('bb-icon').textContent = isG ? '🔫' : '💚';
-  document.getElementById('bb-name').textContent = TR(isG ? 'bossGunnerName' : 'bossHealerName');
-  document.getElementById('bb-desc').textContent = TR(isG ? 'bossGunnerDesc' : 'bossHealerDesc');
+  document.getElementById('bb-icon').textContent = info.icon;
+  document.getElementById('bb-name').textContent = TR(info.name);
+  document.getElementById('bb-desc').textContent = TR(info.desc);
   bb.classList.remove('show'); void bb.offsetWidth; bb.classList.add('show');
   const fl = document.getElementById('flash');
-  fl.style.setProperty('--fc', isG ? 'rgba(255,123,58,0.5)' : 'rgba(53,255,160,0.5)');
+  fl.style.setProperty('--fc', info.fc);
   fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
   SFX.boss();
   clearTimeout(showBossBanner._t);
@@ -1749,10 +1818,10 @@ function update(dt){
     const e = enemies[i];
     if(e.dead){ enemies.splice(i,1); continue; }
 
-    // 只有撞塔艦(ram)會直接撞擊要塞
-    if(e.type==='ram' && Math.hypot(e.x, e.z) < CONFIG.BASE_RADIUS){
-      state.baseHp -= CONFIG.ENEMY.attackDamage;
-      spawnExplosion(e.mesh.position, false);
+    // 撞塔艦與母船會直接撞擊要塞（母船傷害更高）
+    if((e.type==='ram' || e.type==='carrier') && Math.hypot(e.x, e.z) < CONFIG.BASE_RADIUS){
+      state.baseHp -= (e.type==='carrier' ? CONFIG.ENEMY.carrier.ramDamage : CONFIG.ENEMY.attackDamage);
+      spawnExplosion(e.mesh.position, e.type==='carrier');
       SFX.baseHit();
       scene.remove(e.mesh);
       enemies.splice(i,1);
@@ -1778,6 +1847,17 @@ function update(dt){
         if(d < nd){ nd = d; ang = Math.atan2(o.x, o.z); }
       }
       tx = Math.sin(ang)*stand; tz = Math.cos(ang)*stand;
+    } else if(e.type==='carrier'){
+      // 母船待在很遠的支援圈緩慢遊走；當主力艦隊(非母船自己孵的小船)清空後，才逼不得已推進要塞
+      const stand = CONFIG.ENEMY.carrier.standoff;
+      let mainFleet = false;
+      for(const o of enemies){ if(o!==e && !o.dead && o.type!=='carrier' && !o.fromCarrier){ mainFleet = true; break; } }
+      if(mainFleet){
+        const ang = Math.atan2(e.x, e.z);   // 停在自身方位的支援圈上，緩慢繞行
+        tx = Math.sin(ang)*stand; tz = Math.cos(ang)*stand;
+      } else {
+        tx = 0; tz = 0;   // 逼不得已 → 推向要塞（也讓砲塔終能擊沉它，避免卡關）
+      }
     }
 
     // 預設：朝目標直線靠近
@@ -1870,6 +1950,15 @@ function update(dt){
           }
         }
         if(healed) spawnHealPulse(e.mesh.position);
+      }
+    } else if(e.type==='carrier'){
+      // 母船：定時從船腹孵出一艘最弱的小船，衝向要塞
+      e.spawnTimer -= dt;
+      if(e.spawnTimer <= 0){
+        e.spawnTimer = CONFIG.ENEMY.carrier.spawnCooldown;
+        addEnemy(e.x, e.z, 'ram', CONFIG.ENEMY.carrier.spawnWave, true);  // 從母船位置(肚子)孵出
+        spawnMuzzleFlash(e.mesh.position);
+        SFX.build();
       }
     }
   }
