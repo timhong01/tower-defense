@@ -205,7 +205,7 @@
       <div class="hud-row">
         <div class="pill">🌊 <span class="n" id="wave-num">1</span></div>
         <div id="hp-wrap">
-          <div id="hp-label"><span>要塞護盾</span><span id="hp-text">100/100</span></div>
+          <div id="hp-label"><span data-i18n="hpLabel">要塞護盾</span><span id="hp-text">100/100</span></div>
           <div id="hp-bar-bg"><div id="hp-bar-fill"></div></div>
         </div>
       </div>
@@ -217,82 +217,82 @@
     </div>
 
     <div id="side-controls">
-      <button id="pause-btn" aria-label="暫停 / 繼續">⏸</button>
-      <button id="speed-btn" aria-label="加速"><span id="speed-label">1×</span></button>
-      <button id="mute-btn" aria-label="靜音">🔊</button>
-      <button id="fs-btn" aria-label="全螢幕">⛶</button>
+      <button id="pause-btn" aria-label="Pause / Resume">⏸</button>
+      <button id="speed-btn" aria-label="Speed"><span id="speed-label">1×</span></button>
+      <button id="mute-btn" aria-label="Mute">🔊</button>
+      <button id="fs-btn" aria-label="Fullscreen">⛶</button>
     </div>
 
-    <div id="wave-banner">第 <span id="wave-banner-num">1</span> 波<span class="sub">敵艦逼近</span></div>
-    <div id="countdown-chip">下一波倒數 <b id="countdown-num">8</b> 秒</div>
+    <div id="wave-banner"><span id="wave-banner-main">Wave 1</span><span class="sub" id="wave-banner-sub">Enemies incoming</span></div>
+    <div id="countdown-chip"></div>
 
     <div id="bottom-panel">
       <div id="credit-hint"></div>
       <div id="default-actions" class="action-row">
-        <button class="action-btn" id="btn-build">🏗️<br>建塔</button>
-        <button class="action-btn" id="btn-upgrade">⬆️<br>升級</button>
-        <button class="action-btn" id="btn-demolish">🗑️<br>拆除</button>
+        <button class="action-btn" id="btn-build">🏗️<br><span data-i18n="btnBuild">建塔</span></button>
+        <button class="action-btn" id="btn-upgrade">⬆️<br><span data-i18n="btnUpgrade">升級</span></button>
+        <button class="action-btn" id="btn-demolish">🗑️<br><span data-i18n="btnDemolish">拆除</span></button>
       </div>
       <div id="hint-row">
-        <span id="hint-text">點擊海面放置新塔</span>
-        <button id="cancel-build">取消</button>
+        <span id="hint-text" data-i18n="hintPlace">點擊海面放置新塔</span>
+        <button id="cancel-build" data-i18n="cancel">取消</button>
       </div>
       <div id="upgrade-target-row">
-        <div class="ut-label">升級對象：<span id="up-target-name">砲塔</span></div>
+        <div class="ut-label"><span data-i18n="upTargetLabel">升級對象：</span><span id="up-target-name">砲塔</span></div>
         <div class="action-row">
-          <button class="action-btn small" id="up-firerate">⚡ 射速<br><span id="lv-fr">Lv.0</span></button>
-          <button class="action-btn small" id="up-damage">💥 火力<br><span id="lv-dmg">Lv.0</span></button>
-          <button class="action-btn small" id="up-range">🎯 射程<br><span id="lv-range">Lv.0</span></button>
-          <button class="action-btn small" id="up-heal">🩹 補血<br><span id="heal-desc">恢復耐久</span></button>
+          <button class="action-btn small" id="up-firerate">⚡ <span data-i18n="statFirerate">射速</span><br><span id="lv-fr">Lv.0</span></button>
+          <button class="action-btn small" id="up-damage">💥 <span data-i18n="statDamage">火力</span><br><span id="lv-dmg">Lv.0</span></button>
+          <button class="action-btn small" id="up-range">🎯 <span data-i18n="statRange">射程</span><br><span id="lv-range">Lv.0</span></button>
+          <button class="action-btn small" id="up-heal">🩹 <span data-i18n="statHeal">補血</span><br><span id="heal-desc" data-i18n="healDefault">恢復耐久</span></button>
         </div>
         <div class="action-row" id="base-only-row" style="display:none; margin-top:6px;">
-          <button class="action-btn small" id="up-repair">🔧 維修電流（要塞專屬）<br><span id="lv-repair">Lv.0</span></button>
+          <button class="action-btn small" id="up-repair">🔧 <span data-i18n="statRepair">維修電流（要塞專屬）</span><br><span id="lv-repair">Lv.0</span></button>
         </div>
-        <div class="back-link">點畫面空白處返回</div>
+        <div class="back-link" data-i18n="backHint">點畫面空白處返回</div>
       </div>
     </div>
-    <div id="toast">位置不可用，換個地方吧</div>
+    <div id="toast" data-i18n="toastPos">位置不可用，換個地方吧</div>
 
     <!-- Start -->
     <div class="overlay show" id="start-overlay">
       <div class="card">
         <div class="eyebrow" style="text-align:center;margin-bottom:6px;">NAVAL SIEGE</div>
-        <h1>潮汐要塞</h1>
-        <div class="tagline">波數制海上塔防</div>
+        <h1 data-i18n="gameTitle">潮汐要塞</h1>
+        <div class="tagline" data-i18n="tagline">波數制海上塔防</div>
         <ul class="rules">
-          <li>要塞本身就是一座砲塔，會自動朝範圍內敵艦開火</li>
-          <li>敵艦會從四面八方的海面朝中央要塞衝來</li>
-          <li>點擊海面自由放置砲塔，塔會自動攻擊範圍內敵艦，塔上方有血量條</li>
-          <li>開局即有 5 點起始資源、10 秒準備時間可先做抉擇</li>
-          <li>每擊殺 1 艘得 1 分，每滿 5 分可在下方按鈕選擇「升級」或「建造新塔」</li>
-          <li>升級需先點選一座塔（或要塞），再從「射速／火力／補血」三選一，只影響那座塔</li>
-          <li>敵艦靠太近會撞擊砲塔，扣塔的耐久；要塞護盾歸零則遊戲結束</li>
+          <li data-i18n="rule1">要塞本身就是一座砲塔，會自動朝範圍內敵艦開火</li>
+          <li data-i18n="rule2">敵艦會從四面八方的海面朝中央要塞衝來</li>
+          <li data-i18n="rule3">點擊海面自由放置砲塔，塔會自動攻擊範圍內敵艦，塔上方有血量條</li>
+          <li data-i18n="rule4">開局即有 5 點起始資源、10 秒準備時間可先做抉擇</li>
+          <li data-i18n="rule5">每擊殺 1 艘得 1 分，每滿 5 分可在下方按鈕選擇「升級」或「建造新塔」</li>
+          <li data-i18n="rule6">升級需先點選一座塔（或要塞），再從「射速／火力／補血」三選一，只影響那座塔</li>
+          <li data-i18n="rule7">敵艦靠太近會撞擊砲塔，扣塔的耐久；要塞護盾歸零則遊戲結束</li>
         </ul>
-        <button class="big-btn" id="start-btn">啟航迎敵</button>
+        <button class="big-btn" id="start-btn" data-i18n="startBtn">啟航迎敵</button>
       </div>
     </div>
 
     <!-- Pause -->
     <div class="overlay" id="pause-overlay">
       <div class="card">
-        <div class="eyebrow">暫停中</div>
-        <h2 style="color:var(--gold)">已暫停</h2>
-        <p class="desc">戰事已凍結，整理好陣型再繼續。</p>
-        <button class="big-btn" id="resume-btn">繼續遊戲</button>
+        <div class="eyebrow" data-i18n="pauseEyebrow">暫停中</div>
+        <h2 style="color:var(--gold)" data-i18n="pauseTitle">已暫停</h2>
+        <p class="desc" data-i18n="pauseDesc">戰事已凍結，整理好陣型再繼續。</p>
+        <button class="big-btn" id="resume-btn" data-i18n="resumeBtn">繼續遊戲</button>
       </div>
     </div>
 
     <!-- Game over -->
     <div class="overlay" id="gameover-overlay">
       <div class="card">
-        <div class="eyebrow">要塞淪陷</div>
-        <h2>戰役結束</h2>
+        <div class="eyebrow" data-i18n="goEyebrow">要塞淪陷</div>
+        <h2 data-i18n="goTitle">戰役結束</h2>
         <div id="gameover-stats">
-          <div class="stat"><div class="v" id="go-wave">1</div><div class="k">存活波數</div></div>
-          <div class="stat"><div class="v" id="go-kills">0</div><div class="k">擊殺數</div></div>
-          <div class="stat"><div class="v" id="go-towers">1</div><div class="k">建造砲塔</div></div>
+          <div class="stat"><div class="v" id="go-wave">1</div><div class="k" data-i18n="statWaves">存活波數</div></div>
+          <div class="stat"><div class="v" id="go-kills">0</div><div class="k" data-i18n="statKills">擊殺數</div></div>
+          <div class="stat"><div class="v" id="go-towers">1</div><div class="k" data-i18n="statTowers">建造砲塔</div></div>
         </div>
-        <button class="big-btn" id="restart-btn">重新開始</button>
+        <button class="big-btn" id="restart-btn" data-i18n="restartBtn">重新開始</button>
       </div>
     </div>
   </div>
@@ -337,6 +337,81 @@ const CONFIG = {
   UPGRADE_COST: 5,        // 每次建塔／升級消耗的點數
   DEMOLISH_REFUND_DIV: 3  // 拆除退款＝該塔投入點數 ÷ 此值，四捨五入
 };
+
+/* ================= i18n（英文預設，繁中保留；預留 SDK 覆寫接口） ================= */
+const I18N = {
+  title:            { en:"Tidal Fortress · Naval TD", zh:"潮汐要塞 · 海上塔防" },
+  hpLabel:          { en:"Fortress Shield", zh:"要塞護盾" },
+  waveBanner:       { en:"Wave {n}", zh:"第 {n} 波" },
+  waveSub:          { en:"Enemies incoming", zh:"敵艦逼近" },
+  countdown:        { en:"Next wave in {n}s", zh:"下一波倒數 {n} 秒" },
+  btnBuild:         { en:"Build", zh:"建塔" },
+  btnUpgrade:       { en:"Upgrade", zh:"升級" },
+  btnDemolish:      { en:"Demolish", zh:"拆除" },
+  cancel:           { en:"Cancel", zh:"取消" },
+  hintPlace:        { en:"Tap the sea to place a tower", zh:"點擊海面放置新塔" },
+  hintUpgrade:      { en:"Tap a tower (or the fortress) to upgrade", zh:"點擊要升級的砲塔（或要塞）" },
+  hintDemolish:     { en:"Tap a tower to demolish (refunds ⅓ of its points)", zh:"點擊要拆除的砲塔（退還投入點數的 ⅓）" },
+  upTargetLabel:    { en:"Upgrading:", zh:"升級對象：" },
+  targetTower:      { en:"Tower", zh:"砲塔" },
+  targetBase:       { en:"Fortress Cannon", zh:"要塞主砲" },
+  statFirerate:     { en:"Fire Rate", zh:"射速" },
+  statDamage:       { en:"Damage", zh:"火力" },
+  statRange:        { en:"Range", zh:"射程" },
+  statHeal:         { en:"Repair", zh:"補血" },
+  healDesc:         { en:"+{amt} ({hp}/{max})", zh:"恢復{amt}（{hp}/{max}）" },
+  healDefault:      { en:"Restore HP", zh:"恢復耐久" },
+  statRepair:       { en:"Repair Beam (fortress only)", zh:"維修電流（要塞專屬）" },
+  backHint:         { en:"Tap empty water to go back", zh:"點畫面空白處返回" },
+  toastPos:         { en:"Spot unavailable — try elsewhere", zh:"位置不可用，換個地方吧" },
+  toastEdge:        { en:"Too close to the edge — try elsewhere", zh:"太靠近邊界，換個地方吧" },
+  toastNearBase:    { en:"Too close to the fortress — try elsewhere", zh:"離要塞太近，換個地方吧" },
+  toastNearTower:   { en:"Too close to another tower — try elsewhere", zh:"離其他砲塔太近，換個地方吧" },
+  toastPickTower:   { en:"Tap a tower or the fortress", zh:"請點擊砲塔或要塞" },
+  toastPickDemolish:{ en:"Tap a tower to demolish", zh:"請點擊要拆除的砲塔" },
+  toastNoDemoBase:  { en:"The fortress can't be demolished", zh:"要塞無法拆除" },
+  toastDemolished:  { en:"Demolished — {n} points refunded", zh:"已拆除，退還 {n} 點" },
+  toastWaveCleared: { en:"Wave {n} held! +1 point", zh:"第 {n} 波守住了！+1 點" },
+  toastStart:       { en:"{n} starting points — build or upgrade!", zh:"起始資源 {n} 點，快選擇建塔或升級！" },
+  creditCan:        { en:"Build/upgrade ×{n} ({cost} pts each)", zh:"可建造／升級 {n} 次（每次 {cost} 點）" },
+  creditNeed:       { en:"{n} more points to build or upgrade", zh:"再累積 {n} 點即可建造或升級" },
+  gameTitle:        { en:"TIDAL FORTRESS", zh:"潮汐要塞" },
+  tagline:          { en:"Wave-based naval tower defense", zh:"波數制海上塔防" },
+  rule1:            { en:"The fortress is itself a cannon — it auto-fires at ships in range.", zh:"要塞本身就是一座砲塔，會自動朝範圍內敵艦開火" },
+  rule2:            { en:"Enemy ships charge the central fortress from every direction.", zh:"敵艦會從四面八方的海面朝中央要塞衝來" },
+  rule3:            { en:"Tap the sea to place cannons freely; each auto-attacks and has its own HP bar.", zh:"點擊海面自由放置砲塔，塔會自動攻擊範圍內敵艦，塔上方有血量條" },
+  rule4:            { en:"You start with 5 points and a 10-second prep countdown.", zh:"開局即有 5 點起始資源、10 秒準備時間可先做抉擇" },
+  rule5:            { en:"Each kill = 1 point (plus 1 for surviving a wave); every 5 points lets you build or upgrade.", zh:"每擊殺 1 艘得 1 分、每守住一波再 +1，每滿 5 分可在下方選擇「建塔」或「升級」" },
+  rule6:            { en:"To upgrade, pick a tower (or the fortress), then choose one enhancement — it affects only that unit.", zh:"升級需先點選一座塔（或要塞），再擇一項強化，只影響那一座" },
+  rule7:            { en:"Ships ramming your cannons damage them; if the fortress shield hits zero, it's game over.", zh:"敵艦靠太近會撞擊砲塔、扣其耐久；要塞護盾歸零則遊戲結束" },
+  startBtn:         { en:"Set Sail", zh:"啟航迎敵" },
+  pauseEyebrow:     { en:"PAUSED", zh:"暫停中" },
+  pauseTitle:       { en:"Paused", zh:"已暫停" },
+  pauseDesc:        { en:"Battle frozen — regroup, then resume.", zh:"戰事已凍結，整理好陣型再繼續。" },
+  resumeBtn:        { en:"Resume", zh:"繼續遊戲" },
+  goEyebrow:        { en:"FORTRESS FALLEN", zh:"要塞淪陷" },
+  goTitle:          { en:"Battle Over", zh:"戰役結束" },
+  statWaves:        { en:"Waves Survived", zh:"存活波數" },
+  statKills:        { en:"Kills", zh:"擊殺數" },
+  statTowers:       { en:"Towers Built", zh:"建造砲塔" },
+  restartBtn:       { en:"Play Again", zh:"重新開始" }
+};
+function resolveLang(){
+  const forced = window.__NTD_LANG; // 之後可由 CrazyGames SDK 設定語系
+  const raw = String(forced || navigator.language || 'en').toLowerCase();
+  return raw.startsWith('zh') ? 'zh' : 'en';   // 抓不到 zh 一律 fallback 英文
+}
+let LANG = resolveLang();
+function TR(key, params){
+  const e = I18N[key];
+  let s = (e && e[LANG] != null) ? e[LANG] : (e && e.en != null ? e.en : key);
+  if(params) for(const k in params) s = s.split('{'+k+'}').join(params[k]);
+  return s;
+}
+function applyStaticI18n(){
+  document.title = TR('title');
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = TR(el.getAttribute('data-i18n')); });
+}
 
 /* ================= SFX（Web Audio 程序化合成，無音檔、離線可用） ================= */
 const SFX = (function(){
@@ -1172,7 +1247,8 @@ function startWave(n){
   state.spawnTimer = 0;
   state.resting = false;
   document.getElementById('wave-num').textContent = n;
-  document.getElementById('wave-banner-num').textContent = n;
+  document.getElementById('wave-banner-main').textContent = TR('waveBanner', {n});
+  document.getElementById('wave-banner-sub').textContent = TR('waveSub');
   const banner = document.getElementById('wave-banner');
   banner.classList.add('show');
   SFX.wave();
@@ -1228,28 +1304,28 @@ function refreshActionButtons(){
   btnUpgrade.classList.toggle('actionable', has);
   btnDemolish.disabled = towers.length === 0;   // 拆除不需點數，有塔就能用
   creditHint.textContent = has
-    ? ('可建造／升級 '+Math.floor(state.points/cost)+' 次（每次 '+cost+' 點）')
-    : ('再累積 '+(cost-state.points)+' 點即可建造或升級');
+    ? TR('creditCan', {n:Math.floor(state.points/cost), cost})
+    : TR('creditNeed', {n:cost-state.points});
 }
 btnBuild.addEventListener('click', ()=>{
   if(btnBuild.disabled) return;
   SFX.click();
   state.placementMode = true;
-  hintText.textContent = '點擊海面放置新塔';
+  hintText.textContent = TR('hintPlace');
   showBottomPanel('hint');
 });
 btnUpgrade.addEventListener('click', ()=>{
   if(btnUpgrade.disabled) return;
   SFX.click();
   state.upgradeSelectMode = true;
-  hintText.textContent = '點擊要升級的砲塔（或要塞）';
+  hintText.textContent = TR('hintUpgrade');
   showBottomPanel('hint');
 });
 btnDemolish.addEventListener('click', ()=>{
   if(btnDemolish.disabled) return;
   SFX.click();
   state.demolishMode = true;
-  hintText.textContent = '點擊要拆除的砲塔（退還投入點數的 ⅓）';
+  hintText.textContent = TR('hintDemolish');
   showBottomPanel('hint');
 });
 document.getElementById('cancel-build').addEventListener('click', ()=>{
@@ -1265,7 +1341,7 @@ function refreshUpgradeTargetRow(){
   const hp = t.isBase ? state.baseHp : t.hp;
   const maxHp = t.isBase ? CONFIG.BASE_MAX_HP : t.maxHp;
   const broke = state.points < CONFIG.UPGRADE_COST;
-  document.getElementById('up-target-name').textContent = t.isBase ? '要塞主砲' : '砲塔';
+  document.getElementById('up-target-name').textContent = t.isBase ? TR('targetBase') : TR('targetTower');
   // 射速已達下限(冷卻封頂) → 顯示 MAX 並停用
   const frCapped = towerCooldown(t) <= CONFIG.UPGRADE.firerateMin + 1e-6;
   document.getElementById('lv-fr').textContent = frCapped ? 'MAX' : ('Lv.'+t.frLv);
@@ -1275,7 +1351,7 @@ function refreshUpgradeTargetRow(){
   document.getElementById('up-damage').disabled = broke;
   document.getElementById('up-range').disabled = broke;
   document.getElementById('up-heal').disabled = (hp >= maxHp) || broke;
-  document.getElementById('heal-desc').textContent = '恢復'+CONFIG.UPGRADE.healAmount+'（'+Math.round(hp)+'/'+maxHp+'）';
+  document.getElementById('heal-desc').textContent = TR('healDesc', {amt:CONFIG.UPGRADE.healAmount, hp:Math.round(hp), max:maxHp});
   // 維修電流：僅要塞可升級，選塔時隱藏
   document.getElementById('base-only-row').style.display = t.isBase ? 'flex' : 'none';
   document.getElementById('up-repair').disabled = broke;
@@ -1438,10 +1514,10 @@ canvas.addEventListener('click', (e)=>{
     const pt = screenToWorld(e.clientX, e.clientY);
     if(!pt) return;
     const distCenter = Math.hypot(pt.x, pt.z);
-    if(distCenter > CONFIG.FIELD_RADIUS-1.5){ showToast('太靠近邊界，換個地方吧'); return; }
-    if(distCenter < CONFIG.BASE_RADIUS+2.2){ showToast('離要塞太近，換個地方吧'); return; }
+    if(distCenter > CONFIG.FIELD_RADIUS-1.5){ showToast(TR('toastEdge')); return; }
+    if(distCenter < CONFIG.BASE_RADIUS+2.2){ showToast(TR('toastNearBase')); return; }
     for(const t of towers){
-      if(Math.hypot(pt.x-t.x, pt.z-t.z) < 3.2){ showToast('離其他砲塔太近，換個地方吧'); return; }
+      if(Math.hypot(pt.x-t.x, pt.z-t.z) < 3.2){ showToast(TR('toastNearTower')); return; }
     }
     addTower(pt.x, pt.z);
     SFX.build();
@@ -1454,7 +1530,7 @@ canvas.addEventListener('click', (e)=>{
   }
   if(state.upgradeSelectMode){
     const target = pickTowerAt(e.clientX, e.clientY);
-    if(!target){ showToast('請點擊砲塔或要塞'); return; }
+    if(!target){ showToast(TR('toastPickTower')); return; }
     state.upgradeSelectMode = false;
     openUpgradeTargetRowFor(target);
     return;
@@ -1468,8 +1544,8 @@ canvas.addEventListener('click', (e)=>{
   }
   if(state.demolishMode){
     const target = pickTowerAt(e.clientX, e.clientY);
-    if(!target){ showToast('請點擊要拆除的砲塔'); return; }
-    if(target.isBase){ showToast('要塞無法拆除'); return; }
+    if(!target){ showToast(TR('toastPickDemolish')); return; }
+    if(target.isBase){ showToast(TR('toastNoDemoBase')); return; }
     const idx = towers.indexOf(target);
     if(idx >= 0){
       spawnExplosion(target.mesh.position, true);
@@ -1480,7 +1556,7 @@ canvas.addEventListener('click', (e)=>{
       state.points += refund;
       SFX.demolish();
       updatePointUi();
-      showToast('已拆除，退還 '+refund+' 點');
+      showToast(TR('toastDemolished', {n:refund}));
     }
     state.demolishMode = false;
     showBottomPanel('default');
@@ -1499,7 +1575,6 @@ function addPoints(n){
 
 /* ================= Main update ================= */
 const countdownChip = document.getElementById('countdown-chip');
-const countdownNum = document.getElementById('countdown-num');
 
 function killEnemy(enemy){
   if(enemy.dead) return;
@@ -1529,7 +1604,7 @@ function update(dt){
   if(state.resting){
     state.restTimer -= dt;
     countdownChip.classList.add('show');
-    countdownNum.textContent = Math.max(0, Math.ceil(state.restTimer));
+    countdownChip.innerHTML = TR('countdown').split('{n}').join('<b>'+Math.max(0, Math.ceil(state.restTimer))+'</b>');
     if(state.restTimer <= 0){
       state.resting = false;
       startWave(state.wave+1);
@@ -1547,7 +1622,7 @@ function update(dt){
       state.restTimer = CONFIG.WAVE.restSeconds;
       // 每成功守住一波，額外贈送 1 點抉擇資源
       addPoints(1);
-      showToast('第 '+state.wave+' 波守住了！+1 點');
+      showToast(TR('toastWaveCleared', {n:state.wave}));
     }
   }
 
@@ -1786,7 +1861,7 @@ function resetGame(){
   updateHpUi(); updatePointUi(); updateTowerCountUi(); refreshActionButtons();
   document.getElementById('gameover-overlay').classList.remove('show');
   addPoints(CONFIG.START_POINTS);
-  showToast('起始資源 '+CONFIG.START_POINTS+' 點，快選擇建塔或升級！');
+  showToast(TR('toastStart', {n:CONFIG.START_POINTS}));
 }
 
 document.getElementById('start-btn').addEventListener('click', ()=>{
@@ -1812,6 +1887,7 @@ function loop(now){
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
+applyStaticI18n();   // 依語系填入所有靜態 UI 文字（預設英文）
 resize();
 requestAnimationFrame(loop);
 })();
