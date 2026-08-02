@@ -239,8 +239,8 @@
       </div>
       <div class="hud-row">
         <div class="pill">⚔️ <span class="n" id="kill-num">0</span></div>
-        <div class="pill">✦ <span class="n" id="point-num">0</span><span style="opacity:.55;font-size:13px">點</span></div>
-        <div class="pill">🗼 <span class="n" id="tower-num">0</span></div>
+        <div class="pill">✦ <span class="n" id="point-num">0</span><span style="opacity:.55;font-size:13px" data-i18n="ptsSuffix">點</span></div>
+        <div class="pill"><svg class="tower-ico" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><rect x="10.6" y="2" width="2.8" height="10" rx="1" fill="#20252a"/><circle cx="12" cy="13.5" r="7" fill="#3d4a52" stroke="#242c31" stroke-width="1.6"/><circle cx="12" cy="13.5" r="2.4" fill="#5a6b76"/></svg> <span class="n" id="tower-num">0</span></div>
       </div>
     </div>
 
@@ -377,6 +377,7 @@ const CONFIG = {
 const I18N = {
   title:            { en:"Tidal Fortress · Naval TD", zh:"潮汐要塞 · 海上塔防" },
   hpLabel:          { en:"Fortress Shield", zh:"要塞護盾" },
+  ptsSuffix:        { en:"pts", zh:"點" },
   waveBanner:       { en:"Wave {n}", zh:"第 {n} 波" },
   waveSub:          { en:"Enemies incoming", zh:"敵艦逼近" },
   waveUpgraded:     { en:"ENEMIES UPGRADED!", zh:"敵艦升級！" },
