@@ -94,6 +94,27 @@
   #wave-banner.upgraded.show{ animation: bannerPulse .5s ease-in-out 2; }
   @keyframes bannerPulse{ 0%,100%{ transform:translate(-50%,-50%) scale(1); } 50%{ transform:translate(-50%,-50%) scale(1.08); } }
 
+  /* ---------- Boss / 特殊艦登場橫幅 ---------- */
+  #boss-banner{
+    position:absolute; top:36%; left:0; right:0; z-index:26; text-align:center; pointer-events:none;
+    padding:16px 0; --clr:#ff7b3a; --glow:rgba(255,123,58,0.5);
+    background: linear-gradient(90deg, transparent, rgba(4,10,14,0.82) 12%, rgba(4,10,14,0.82) 88%, transparent);
+    border-top:2px solid var(--clr); border-bottom:2px solid var(--clr);
+    box-shadow: 0 0 42px var(--glow);
+    opacity:0; transform: translateY(10px) scaleX(.85);
+    transition: opacity .35s ease, transform .35s ease;
+  }
+  #boss-banner.show{ opacity:1; transform: translateY(0) scaleX(1); }
+  #boss-banner.gunship{ --clr:#ff7b3a; --glow:rgba(255,123,58,0.55); }
+  #boss-banner.healer{ --clr:#35ffa0; --glow:rgba(53,255,160,0.55); }
+  #boss-banner .bb-eyebrow{ font-family:'Teko',sans-serif; letter-spacing:.34em; font-size:15px; color:var(--clr); text-transform:uppercase; }
+  #boss-banner .bb-name{ font-family:'Teko',sans-serif; font-weight:700; font-size:clamp(40px,12vw,64px); color:#fff; line-height:1; text-shadow:0 0 26px var(--glow); }
+  #boss-banner .bb-desc{ font-size:13.5px; color:var(--foam); opacity:.85; margin-top:5px; letter-spacing:.02em; }
+  #flash{ position:absolute; inset:0; z-index:24; pointer-events:none; opacity:0;
+    background: radial-gradient(ellipse at 50% 40%, var(--fc, rgba(255,255,255,0.4)), transparent 70%); }
+  #flash.go{ animation: flashAnim .55s ease; }
+  @keyframes flashAnim{ 0%{opacity:0} 28%{opacity:1} 100%{opacity:0} }
+
   #countdown-chip{
     position:absolute; top:64px; left:50%; transform:translateX(-50%);
     font-family:'Teko',sans-serif; font-size:15px; color:var(--foam); opacity:0;
@@ -233,6 +254,14 @@
     <div id="wave-banner"><span id="wave-banner-main">Wave 1</span><span class="sub" id="wave-banner-sub">Enemies incoming</span></div>
     <div id="countdown-chip"></div>
 
+    <!-- 特殊艦登場：Boss 風格橫幅 + 螢幕閃光 -->
+    <div id="flash"></div>
+    <div id="boss-banner">
+      <div class="bb-eyebrow" id="bb-eyebrow">NEW ENEMY APPROACHING</div>
+      <div class="bb-name"><span id="bb-icon">🔫</span> <span id="bb-name">GUNSHIP</span></div>
+      <div class="bb-desc" id="bb-desc">Bombards your towers from range</div>
+    </div>
+
     <div id="bottom-panel">
       <div id="credit-hint"></div>
       <div id="default-actions" class="action-row">
@@ -351,6 +380,11 @@ const I18N = {
   waveBanner:       { en:"Wave {n}", zh:"第 {n} 波" },
   waveSub:          { en:"Enemies incoming", zh:"敵艦逼近" },
   waveUpgraded:     { en:"ENEMIES UPGRADED!", zh:"敵艦升級！" },
+  bossNew:          { en:"NEW ENEMY APPROACHING", zh:"特殊艦登場" },
+  bossGunnerName:   { en:"GUNSHIP", zh:"砲擊艦" },
+  bossGunnerDesc:   { en:"Bombards your towers from range", zh:"遠程轟擊你的砲塔" },
+  bossHealerName:   { en:"HEALER FLEET", zh:"補血艦" },
+  bossHealerDesc:   { en:"Heals nearby enemy ships", zh:"治療周圍的敵艦" },
   countdown:        { en:"Next wave in {n}s", zh:"下一波倒數 {n} 秒" },
   btnBuild:         { en:"Build", zh:"建塔" },
   btnUpgrade:       { en:"Upgrade", zh:"升級" },
@@ -566,6 +600,7 @@ const SFX = (function(){
     zap(){ if(throttled('zap',60)) tone(1250, 0.1, 'square', 0.10, 320); },
     heal(){ if(throttled('heal',80)) tone(520, 0.16, 'sine', 0.12, 800); },
     gameover(){ tone(400,0.5,'sawtooth',0.3,120); tone(300,0.6,'sawtooth',0.3,90,0.22); tone(200,0.8,'sawtooth',0.3,70,0.5); },
+    boss(){ tone(150,0.7,'sawtooth',0.32,230); tone(230,0.8,'sawtooth',0.26,180,0.12); noise(0.5,0.22,500,120); },
     click(){ tone(320, 0.04, 'square', 0.10); }
   };
 })();
@@ -1286,6 +1321,13 @@ function startWave(n){
   state.spawnTimer = 0;
   state.resting = false;
   document.getElementById('wave-num').textContent = n;
+  document.getElementById('countdown-chip').classList.remove('show');
+
+  // 特殊艦首次登場的波次 → 改用 Boss 風格橫幅（取代一般升級橫幅）
+  const introType = (n === CONFIG.WAVE.healerFromWave) ? 'healer'
+                  : (n === CONFIG.WAVE.gunnerFromWave) ? 'gunner' : null;
+  if(introType){ showBossBanner(introType); return; }
+
   const banner = document.getElementById('wave-banner');
   const bMain = document.getElementById('wave-banner-main');
   const bSub  = document.getElementById('wave-banner-sub');
@@ -1304,7 +1346,22 @@ function startWave(n){
   banner.classList.add('show');
   SFX.wave();
   setTimeout(()=>banner.classList.remove('show'), 1600);
-  document.getElementById('countdown-chip').classList.remove('show');
+}
+function showBossBanner(type){
+  const bb = document.getElementById('boss-banner');
+  const isG = type === 'gunner';
+  bb.className = ''; bb.classList.add(isG ? 'gunship' : 'healer');
+  document.getElementById('bb-eyebrow').textContent = TR('bossNew');
+  document.getElementById('bb-icon').textContent = isG ? '🔫' : '💚';
+  document.getElementById('bb-name').textContent = TR(isG ? 'bossGunnerName' : 'bossHealerName');
+  document.getElementById('bb-desc').textContent = TR(isG ? 'bossGunnerDesc' : 'bossHealerDesc');
+  bb.classList.remove('show'); void bb.offsetWidth; bb.classList.add('show');
+  const fl = document.getElementById('flash');
+  fl.style.setProperty('--fc', isG ? 'rgba(255,123,58,0.5)' : 'rgba(53,255,160,0.5)');
+  fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
+  SFX.boss();
+  clearTimeout(showBossBanner._t);
+  showBossBanner._t = setTimeout(()=> bb.classList.remove('show'), 2800);
 }
 
 /* ================= UI helpers ================= */
