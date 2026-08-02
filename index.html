@@ -1837,16 +1837,26 @@ function update(dt){
       for(const t of towers){ const d = Math.hypot(e.x-t.x, e.z-t.z); if(d < nd){ nd = d; nt = t; } }
       if(nt){ tx = nt.x; tz = nt.z; } else { tx = 0; tz = 0; }
     } else if(e.type==='healer'){
-      // 補血艦不跟著往前衝：停在距要塞 standoff 的支援圈上，角度跟著最近的友軍，
-      // 讓衝鋒的友軍經過它時獲得治療，自己不進入砲塔射程送死
-      const stand = CONFIG.ENEMY.healer.standoff;
-      let nd = Infinity, ang = Math.atan2(e.x, e.z);
+      // 補血艦優先跟隨砲艇：停在砲艇稍外側(仍在治療範圍內)，一起組成耐打的遠程後排
+      let gunner = null, gnd = Infinity;
       for(const o of enemies){
-        if(o === e || o.type === 'healer' || o.dead) continue;
-        const d = Math.hypot(o.x-e.x, o.z-e.z);
-        if(d < nd){ nd = d; ang = Math.atan2(o.x, o.z); }
+        if(o.type==='gunner' && !o.dead){ const d = Math.hypot(o.x-e.x, o.z-e.z); if(d < gnd){ gnd = d; gunner = o; } }
       }
-      tx = Math.sin(ang)*stand; tz = Math.cos(ang)*stand;
+      if(gunner){
+        const dg = Math.hypot(gunner.x, gunner.z) || 0.001;
+        const rr = dg + CONFIG.ENEMY.healer.healRadius*0.55;   // 站在砲艇外側一點，仍在治療範圍內
+        tx = gunner.x/dg*rr; tz = gunner.z/dg*rr;
+      } else {
+        // 沒有砲艇時，退回原本的支援圈：停在距要塞 standoff、角度跟著最近友軍
+        const stand = CONFIG.ENEMY.healer.standoff;
+        let nd = Infinity, ang = Math.atan2(e.x, e.z);
+        for(const o of enemies){
+          if(o === e || o.type === 'healer' || o.dead) continue;
+          const d = Math.hypot(o.x-e.x, o.z-e.z);
+          if(d < nd){ nd = d; ang = Math.atan2(o.x, o.z); }
+        }
+        tx = Math.sin(ang)*stand; tz = Math.cos(ang)*stand;
+      }
     } else if(e.type==='carrier'){
       // 母船待在很遠的支援圈緩慢遊走；當主力艦隊(非母船自己孵的小船)清空後，才逼不得已推進要塞
       const stand = CONFIG.ENEMY.carrier.standoff;
