@@ -357,8 +357,8 @@ const CONFIG = {
     turnRate: 1.5,        // 每秒最大轉向弧度（越小轉彎越大、船味越重）
     // 砲擊艦：站遠處遠程轟擊砲塔／要塞，不撞塔
     gunner: { hpMult:1.7, speedMult:0.7, standoff:8, fireRange:9.5, cooldown:2.2, damage:11, bulletSpeed:24 },
-    // 補血艦：不攻擊，定期治療周圍受損的敵艦
-    healer: { hpMult:1.35, speedMult:0.85, healRadius:5.5, healCooldown:2.6, healFrac:0.13 }
+    // 補血艦：不攻擊，待在要塞射程外的支援圈，治療經過的友軍（standoff＞塔射程避免送死）
+    healer: { hpMult:1.35, speedMult:0.85, healRadius:5.5, healCooldown:2.6, healFrac:0.13, standoff:14 }
   },
   WAVE: {
     baseCount: 5, countPerWave: 2, countCap: 22,
@@ -1767,6 +1767,17 @@ function update(dt){
       let nd = Infinity, nt = null;
       for(const t of towers){ const d = Math.hypot(e.x-t.x, e.z-t.z); if(d < nd){ nd = d; nt = t; } }
       if(nt){ tx = nt.x; tz = nt.z; } else { tx = 0; tz = 0; }
+    } else if(e.type==='healer'){
+      // 補血艦不跟著往前衝：停在距要塞 standoff 的支援圈上，角度跟著最近的友軍，
+      // 讓衝鋒的友軍經過它時獲得治療，自己不進入砲塔射程送死
+      const stand = CONFIG.ENEMY.healer.standoff;
+      let nd = Infinity, ang = Math.atan2(e.x, e.z);
+      for(const o of enemies){
+        if(o === e || o.type === 'healer' || o.dead) continue;
+        const d = Math.hypot(o.x-e.x, o.z-e.z);
+        if(d < nd){ nd = d; ang = Math.atan2(o.x, o.z); }
+      }
+      tx = Math.sin(ang)*stand; tz = Math.cos(ang)*stand;
     }
 
     // 預設：朝目標直線靠近
