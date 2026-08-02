@@ -1381,6 +1381,13 @@ muteBtn.addEventListener('click', ()=>{
   try { localStorage.setItem('ntd_muted', m ? '1' : '0'); } catch(e){}
 });
 
+/* iOS/行動裝置音訊保險：AudioContext 在切到背景、來電中斷或切分頁後會被暫停，
+   且只能在「使用者手勢事件內」呼叫 resume() 才會恢復。這裡對任何觸控/點擊都嘗試恢復，
+   確保背景返回後只要玩家一碰畫面（放塔、按鈕）音訊就會復活；回到前景時也順手試一次。 */
+['pointerdown','touchend','click'].forEach(ev =>
+  document.addEventListener(ev, ()=>SFX.resume(), { passive:true }));
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) SFX.resume(); });
+
 /* ================= Fullscreen 全螢幕（隱藏瀏覽器網址列） ================= */
 const fsBtn = document.getElementById('fs-btn');
 fsBtn.addEventListener('click', ()=>{
