@@ -365,8 +365,8 @@ const CONFIG = {
   },
   WAVE: {
     baseCount: 5, countPerWave: 2, countCap: 22,
-    spawnIntervalBase: 1.05, spawnIntervalPerWave: 0.035, spawnIntervalMin: 0.38,
-    restSeconds: 8,
+    waveInterval: 11,          // 固定開波間隔(秒)：時間到就開下一波，不等清場，未清的敵艦留在場上累積壓力
+    spawnFillRatio: 0.85,      // 本波敵人在間隔的前 85% 內生成完畢，尾段留點喘息
     gunnerFromWave: 8, gunnerCap: 6,    // 砲擊艦自第8波起混入，上限6
     healerFromWave: 12, healerCap: 3,   // 補血艦自第12波起混入，上限3
     carrierFromWave: 16, carrierCap: 1  // 航母自第16波起登場，每波至多1艘
@@ -1262,6 +1262,7 @@ const state = {
   spawnInterval:1,
   resting:true,
   restTimer:2,
+  waveTimer:0,
   placementMode:false,
   upgradeSelectMode:false,
   demolishMode:false,
@@ -1380,11 +1381,11 @@ function startWave(n){
     for(let i=q.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const tmp=q[i]; q[i]=q[j]; q[j]=tmp; }
     state.spawnQueue = q;
   }
-  state.spawnInterval = Math.max(CONFIG.WAVE.spawnIntervalMin, CONFIG.WAVE.spawnIntervalBase - (n-1)*CONFIG.WAVE.spawnIntervalPerWave);
+  // 本波敵人在間隔前段內平均生成完（依數量自動調整生成速率，確保不會來不及生成就開下一波）
+  state.spawnInterval = Math.max(0.22, (CONFIG.WAVE.waveInterval*CONFIG.WAVE.spawnFillRatio) / state.waveEnemiesTotal);
   state.spawnTimer = 0;
   state.resting = false;
   document.getElementById('wave-num').textContent = n;
-  document.getElementById('countdown-chip').classList.remove('show');
 
   // 特殊艦首次登場的波次 → 改用 Boss 風格橫幅（取代一般升級橫幅）
   const introType = (n === CONFIG.WAVE.carrierFromWave) ? 'carrier'
@@ -1782,16 +1783,18 @@ function update(dt){
   camera.position.copy(camInitialDir).multiplyScalar(camDist);
   camera.lookAt(0, 0, 0);
 
-  // resting / wave spawn logic
+  // resting / wave logic —— 固定時間開波：時間到就開下一波，未清的敵艦留在場上累積壓力
   if(state.resting){
+    // 開局前的準備倒數（只在第一波前）
     state.restTimer -= dt;
     countdownChip.classList.add('show');
     countdownChip.innerHTML = TR('countdown').split('{n}').join('<b>'+Math.max(0, Math.ceil(state.restTimer))+'</b>');
     if(state.restTimer <= 0){
-      state.resting = false;
       startWave(state.wave+1);
+      state.waveTimer = CONFIG.WAVE.waveInterval;
     }
   } else {
+    // 生成本波敵人
     if(state.waveEnemiesSpawned < state.waveEnemiesTotal){
       state.spawnTimer -= dt;
       if(state.spawnTimer <= 0){
@@ -1799,12 +1802,16 @@ function update(dt){
         state.waveEnemiesSpawned++;
         state.spawnTimer = state.spawnInterval;
       }
-    } else if(enemies.length === 0){
-      state.resting = true;
-      state.restTimer = CONFIG.WAVE.restSeconds;
-      // 每成功守住一波，額外贈送 1 點抉擇資源
-      addPoints(1);
+    }
+    // 固定間隔開下一波（不等清場）；頂端持續顯示下一波倒數
+    state.waveTimer -= dt;
+    countdownChip.classList.add('show');
+    countdownChip.innerHTML = TR('countdown').split('{n}').join('<b>'+Math.max(0, Math.ceil(state.waveTimer))+'</b>');
+    if(state.waveTimer <= 0){
+      addPoints(1);                                      // 撐過一波 +1 點
       showToast(TR('toastWaveCleared', {n:state.wave}));
+      startWave(state.wave+1);
+      state.waveTimer = CONFIG.WAVE.waveInterval;
     }
   }
 
@@ -2073,7 +2080,7 @@ function resetGame(){
   Object.assign(state, {
     running:true, time:0, baseHp: CONFIG.BASE_MAX_HP, points:0, kills:0,
     wave:0, waveEnemiesTotal:0, waveEnemiesSpawned:0, spawnTimer:0, spawnInterval:1,
-    resting:true, restTimer:CONFIG.START_COUNTDOWN, placementMode:false, upgradeSelectMode:false, demolishMode:false,
+    resting:true, restTimer:CONFIG.START_COUNTDOWN, waveTimer:0, placementMode:false, upgradeSelectMode:false, demolishMode:false,
     currentUpgradeTarget:null, spawnQueue:[], gameOver:false, paused:false, speedMul:1, totalTowersBuilt:0, playTime:0
   });
   setPaused(false);
