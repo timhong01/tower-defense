@@ -763,16 +763,19 @@ const oceanMat = new THREE.ShaderMaterial({
 
       vec3 viewDir = normalize(uCamPos - vWorldPos);
       vec3 halfDir = normalize(normalize(uSunDir) + viewDir);
-      float spec = pow(max(dot(n, halfDir), 0.0), 40.0);
-      float specQ = spec > 0.45 ? 1.0 : 0.0;
-      base += vec3(1.0, 0.92, 0.75) * specQ * 0.85;
+      // 高光：門檻拉高、強度降低 → 白色亮塊變小變少，不再一大片干擾
+      float spec = pow(max(dot(n, halfDir), 0.0), 60.0);
+      float specQ = spec > 0.72 ? 1.0 : 0.0;
+      base += vec3(1.0, 0.92, 0.75) * specQ * 0.42;
 
-      float foam = step(0.7, h);
-      base = mix(base, uFoam, foam * 0.5);
+      // 泡沫：只在較高的浪尖出現、混色更淡
+      float foam = step(0.86, h);
+      base = mix(base, uFoam, foam * 0.28);
 
+      // 邊緣反光：門檻拉高、強度降低，收斂雜訊感
       float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 4.0);
-      float fresnelQ = fresnel > 0.55 ? 1.0 : 0.0;
-      base += vec3(0.5, 0.7, 0.75) * fresnelQ * 0.18;
+      float fresnelQ = fresnel > 0.72 ? 1.0 : 0.0;
+      base += vec3(0.5, 0.7, 0.75) * fresnelQ * 0.10;
 
       gl_FragColor = vec4(base, 1.0);
     }
